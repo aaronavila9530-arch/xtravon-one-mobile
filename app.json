@@ -1,0 +1,46 @@
+{
+  "expo": {
+    "name": "ERP El Surco",
+    "slug": "erp-el-surco-mobile",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "scheme": "erpsurco",
+    "userInterfaceStyle": "light",
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.elsurco.erp"
+    },
+    "android": {
+      "package": "com.elsurco.erp",
+      "adaptiveIcon": {
+        "backgroundColor": "#5F6654"
+      },
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO"
+      ]
+    },
+    "plugins": [
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "ERP El Surco usa la camara para escanear QR de guias."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "ERP El Surco usa fotos como evidencia documental."
+        }
+      ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "85ba4aaa-3461-4f15-96e9-013c083e7bc7"
+      }
+    }
+  }
+}
