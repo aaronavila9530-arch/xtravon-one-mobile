@@ -1,22 +1,41 @@
 {
   "expo": {
-    "name": "ERP El Surco",
+    "name": "XTRAVON ONE",
     "slug": "erp-el-surco-mobile",
+    "newArchEnabled": false,
+    "icon": "./assets/XTRAVON_seal_round_transparent.png",
     "version": "0.1.0",
     "orientation": "portrait",
-    "scheme": "erpsurco",
-    "userInterfaceStyle": "light",
+    "scheme": "xtravon",
+    "userInterfaceStyle": "dark",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/85ba4aaa-3461-4f15-96e9-013c083e7bc7",
+      "fallbackToCacheTimeout": 0
+    },
+    "splash": {
+      "image": "./assets/xtravon_splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#050B14"
+    },
     "assetBundlePatterns": [
       "**/*"
     ],
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.elsurco.erp"
+      "bundleIdentifier": "com.elsurco.erp",
+      "infoPlist": {
+        "NSMicrophoneUsageDescription": "XTRAVON ONE usa el microfono para dictar preguntas a P.O.R.T.I.A.",
+        "NSSpeechRecognitionUsageDescription": "XTRAVON ONE usa reconocimiento de voz para consultar P.O.R.T.I.A."
+      }
     },
     "android": {
       "package": "com.elsurco.erp",
       "adaptiveIcon": {
-        "backgroundColor": "#5F6654"
+        "foregroundImage": "./assets/XTRAVON_seal_round_transparent.png",
+        "backgroundColor": "#050B14"
       },
       "permissions": [
         "android.permission.CAMERA",
@@ -24,16 +43,25 @@
       ]
     },
     "plugins": [
+      "expo-updates",
+      "expo-font",
       [
         "expo-camera",
         {
-          "cameraPermission": "ERP El Surco usa la camara para escanear QR de guias."
+          "cameraPermission": "XTRAVON ONE usa la camara para escanear QR de guias."
         }
       ],
       [
         "expo-image-picker",
         {
-          "photosPermission": "ERP El Surco usa fotos como evidencia documental."
+          "photosPermission": "XTRAVON ONE usa fotos como evidencia documental."
+        }
+      ],
+      [
+        "expo-speech-recognition",
+        {
+          "microphonePermission": "XTRAVON ONE usa el microfono para dictar preguntas a P.O.R.T.I.A.",
+          "speechRecognitionPermission": "XTRAVON ONE usa reconocimiento de voz para consultar P.O.R.T.I.A."
         }
       ]
     ],
