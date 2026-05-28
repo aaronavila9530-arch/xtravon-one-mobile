@@ -1,0 +1,29 @@
+# Expo
+.expo/
+.expo-export*/
+dist/
+web-build/
+
+# Dependencies
+node_modules/
+
+# Native generated folders
+android/
+ios/
+
+# Environment files
+.env
+.env.*
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Local accidental/debug files
+.gitignoregit
