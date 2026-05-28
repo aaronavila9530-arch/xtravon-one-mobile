@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from "react";
-import { Alert, Linking, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { Alert, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import * as FileSystem from "expo-file-system/legacy";
 import { api } from "../api/client";
 import { BarChart, Button, Card, DistributionChart, EmptyState, Kpi, LineChart, Loading, Row, Screen } from "../components/ui";
 import { COLORS } from "../config";
@@ -32,6 +33,19 @@ export default function InformesScreen() {
   const [clienteInforme, setClienteInforme] = useState("");
   const [numeroInforme, setNumeroInforme] = useState("");
   const [textoInforme, setTextoInforme] = useState("");
+  const [filterOptions, setFilterOptions] = useState({});
+  const [filters, setFilters] = useState({
+    empresa: "",
+    guia: "",
+    producto: "",
+    chofer: "",
+    placa: "",
+    bodega_numero: "",
+    estado: "",
+    etapa_qr: "",
+    fecha_desde: "",
+    fecha_hasta: ""
+  });
 
   const selectedOperacion = useMemo(
     () => operaciones.find((item) => Number(item.id) === Number(selectedOperacionId)),
@@ -64,6 +78,51 @@ export default function InformesScreen() {
     }
   }
 
+  async function loadFiltros() {
+    if (!selectedOperacionId) {
+      Alert.alert("Sin operacion", "Seleccione una operacion para cargar filtros.");
+      return;
+    }
+    try {
+      await runWithLoading("Cargando filtros del informe...", async () => {
+        const data = await api.getReporteBuqueFiltros(selectedOperacionId);
+        setFilterOptions(data?.opciones || {});
+      });
+    } catch (error) {
+      Alert.alert("Filtros informes", error.message);
+    }
+  }
+
+  function cleanReportParams(extra = {}) {
+    const params = { tipo_reporte: tipoReporte, ...extra };
+    Object.entries(filters).forEach(([key, value]) => {
+      const clean = String(value || "").trim();
+      if (clean) params[key] = clean;
+    });
+    return params;
+  }
+
+  function updateFilter(key, value) {
+    setFilters((current) => ({ ...current, [key]: value }));
+    setInforme(null);
+  }
+
+  function clearFilters() {
+    setFilters({
+      empresa: "",
+      guia: "",
+      producto: "",
+      chofer: "",
+      placa: "",
+      bodega_numero: "",
+      estado: "",
+      etapa_qr: "",
+      fecha_desde: "",
+      fecha_hasta: ""
+    });
+    setInforme(null);
+  }
+
   async function loadInforme() {
     if (!selectedOperacionId) {
       Alert.alert("Sin operacion", "Seleccione una operacion para visualizar el informe.");
@@ -72,7 +131,7 @@ export default function InformesScreen() {
 
     try {
       await runWithLoading("Generando vista del informe...", async () => {
-        const data = await api.getReporteBuque(selectedOperacionId, { tipo_reporte: tipoReporte });
+        const data = await api.getReporteBuque(selectedOperacionId, cleanReportParams());
         setInforme(data);
         setTextoInforme(buildLectura(data, tipoReporte));
       });
@@ -116,13 +175,20 @@ export default function InformesScreen() {
       Alert.alert("Sin operacion", "Seleccione una operacion para descargar el informe.");
       return;
     }
-    const url = api.reporteBuqueDownloadUrl(selectedOperacionId, formato, { tipo_reporte: tipoReporte });
-    const supported = await Linking.canOpenURL(url);
-    if (!supported) {
-      Alert.alert("Descargar informe", "No se pudo abrir la descarga del informe.");
-      return;
+    try {
+      await runWithLoading(`Descargando ${formato.toUpperCase()}...`, async () => {
+        const params = cleanReportParams();
+        const url = api.reporteBuqueDownloadUrl(selectedOperacionId, formato, params);
+        const extension = formato === "excel" ? "xlsx" : formato === "word" ? "docx" : formato;
+        const mime = mimeForFormat(formato);
+        const safeName = `${selectedOperacion?.nombre_buque || "informe"}_${tipoReporte}`.replace(/[^a-z0-9_-]+/gi, "_");
+        const uri = `${FileSystem.documentDirectory}${safeName}.${extension}`;
+        const result = await FileSystem.downloadAsync(url, uri);
+        await abrirArchivo(result.uri, mime);
+      });
+    } catch (error) {
+      Alert.alert("Descargar informe", error.message || "No se pudo descargar el informe.");
     }
-    Linking.openURL(url);
   }
 
   function selectedReportLabel() {
@@ -130,12 +196,13 @@ export default function InformesScreen() {
   }
 
   return (
-    <Screen title="Informes" subtitle="Visualizacion y descarga por buque, tipo de reporte y formato." minWidth={1120}>
+    <Screen title="Informes" subtitle="Visualizacion y descarga por buque, tipo de reporte y formato." minWidth={430} horizontal={false}>
       <ScrollView>
         <Card>
           <Text style={styles.sectionTitle}>Operaciones</Text>
           <View style={styles.actions}>
             <Button label="Buscar informes" icon="search-outline" onPress={loadOperaciones} />
+            <Button label="Cargar filtros" icon="filter-outline" tone="info" onPress={loadFiltros} disabled={!selectedOperacionId} />
             <Button label="Ver informe" icon="analytics-outline" tone="info" onPress={loadInforme} />
             <Button label="Descargar" icon="download-outline" tone="info" onPress={descargarInforme} />
           </View>
@@ -164,6 +231,26 @@ export default function InformesScreen() {
               </View>
             </ScrollView>
           )}
+        </Card>
+
+        <Card>
+          <Text style={styles.sectionTitle}>Filtros del informe</Text>
+          <View style={styles.formGrid}>
+            <FilterInput label="Empresa" value={filters.empresa} onChangeText={(value) => updateFilter("empresa", value)} options={filterOptions.empresas} />
+            <FilterInput label="Guia" value={filters.guia} onChangeText={(value) => updateFilter("guia", value)} options={filterOptions.guias} />
+            <FilterInput label="Producto" value={filters.producto} onChangeText={(value) => updateFilter("producto", value)} options={filterOptions.productos} />
+            <FilterInput label="Chofer" value={filters.chofer} onChangeText={(value) => updateFilter("chofer", value)} options={filterOptions.choferes} />
+            <FilterInput label="Placa" value={filters.placa} onChangeText={(value) => updateFilter("placa", value)} options={filterOptions.placas} />
+            <FilterInput label="Bodega" value={filters.bodega_numero} onChangeText={(value) => updateFilter("bodega_numero", value)} options={filterOptions.bodegas} keyboardType="numeric" />
+            <FilterInput label="Estado" value={filters.estado} onChangeText={(value) => updateFilter("estado", value)} options={filterOptions.estados} />
+            <FilterInput label="Etapa QR" value={filters.etapa_qr} onChangeText={(value) => updateFilter("etapa_qr", value)} options={filterOptions.etapas_qr} />
+            <FilterInput label="Desde YYYY-MM-DD" value={filters.fecha_desde} onChangeText={(value) => updateFilter("fecha_desde", value)} />
+            <FilterInput label="Hasta YYYY-MM-DD" value={filters.fecha_hasta} onChangeText={(value) => updateFilter("fecha_hasta", value)} />
+          </View>
+          <View style={styles.actions}>
+            <Button label="Generar datos filtrados" icon="analytics-outline" tone="accent" onPress={loadInforme} disabled={!selectedOperacionId} />
+            <Button label="Limpiar filtros" icon="close-outline" onPress={clearFilters} />
+          </View>
         </Card>
 
         <Card>
@@ -229,6 +316,36 @@ export default function InformesScreen() {
         {!!informe && <InformeDetalle informe={informe} tipoReporte={tipoReporte} />}
       </ScrollView>
     </Screen>
+  );
+}
+
+function FilterInput({ label, value, onChangeText, options = [], keyboardType }) {
+  const normalized = (options || []).map((item) => String(item || "")).filter(Boolean);
+  const query = String(value || "").trim().toLowerCase();
+  const suggestions = query
+    ? normalized.filter((item) => item.toLowerCase().includes(query)).slice(0, 8)
+    : normalized.slice(0, 8);
+  return (
+    <View style={styles.inputBox}>
+      <Text style={styles.label}>{label}</Text>
+      <TextInput
+        value={value}
+        onChangeText={onChangeText}
+        style={styles.input}
+        placeholder={label}
+        placeholderTextColor={COLORS.auxiliary}
+        keyboardType={keyboardType || "default"}
+      />
+      {suggestions.length > 0 && (
+        <View style={styles.suggestionWrap}>
+          {suggestions.map((item) => (
+            <Pressable key={item} style={styles.suggestionChip} onPress={() => onChangeText(item)}>
+              <Text style={styles.suggestionText} numberOfLines={1}>{item}</Text>
+            </Pressable>
+          ))}
+        </View>
+      )}
+    </View>
   );
 }
 
@@ -522,6 +639,38 @@ function formatAny(value) {
   return value === null || value === undefined || value === "" ? "-" : String(value);
 }
 
+function mimeForFormat(format) {
+  if (format === "excel") return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+  if (format === "word") return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+  if (format === "csv") return "text/csv";
+  return "application/pdf";
+}
+
+async function abrirArchivo(uri, mimeType) {
+  try {
+    if (Platform.OS === "android") {
+      const IntentLauncher = require("expo-intent-launcher");
+      const contentUri = await FileSystem.getContentUriAsync(uri);
+      await IntentLauncher.startActivityAsync("android.intent.action.VIEW", {
+        data: contentUri,
+        type: mimeType,
+        flags: 1
+      });
+      return;
+    }
+  } catch (_error) {
+    // Fallback to native share sheet below.
+  }
+  try {
+    const Sharing = require("expo-sharing");
+    if (await Sharing.isAvailableAsync()) {
+      await Sharing.shareAsync(uri, { mimeType, dialogTitle: "Abrir informe" });
+    }
+  } catch (_error) {
+    Alert.alert("Archivo listo", uri);
+  }
+}
+
 const styles = StyleSheet.create({
   sectionTitle: {
     color: COLORS.text,
@@ -617,6 +766,26 @@ const styles = StyleSheet.create({
   textArea: {
     minHeight: 120,
     textAlignVertical: "top"
+  },
+  suggestionWrap: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 6,
+    marginTop: -4,
+    marginBottom: 10
+  },
+  suggestionChip: {
+    backgroundColor: COLORS.elevated,
+    borderColor: COLORS.border,
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    maxWidth: 160
+  },
+  suggestionText: {
+    color: COLORS.text,
+    fontWeight: "800"
   },
   kpiGrid: {
     flexDirection: "row",

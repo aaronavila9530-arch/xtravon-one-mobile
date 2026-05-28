@@ -14,17 +14,20 @@ App movil iOS/Android para operar el ERP EL SURCO desde campo, patio, supervisio
 
 ## Backend
 
-La app apunta a:
+La app no debe tener el API hardcoded en codigo. Configure el endpoint por ambiente antes de compilar o publicar updates:
 
-```txt
-https://erp-elsurco-backend-production.up.railway.app
+```powershell
+$env:EXPO_PUBLIC_API_BASE_URL="https://tu-backend.railway.app"
 ```
 
-Se puede cambiar en:
+Tambien puede usar variables por variante:
 
-```txt
-mobile/src/config.js
+```powershell
+$env:EXPO_PUBLIC_API_BASE_URL_CELULAR="https://tu-backend.railway.app"
+$env:EXPO_PUBLIC_API_BASE_URL_HANDHELD="https://tu-backend.railway.app"
 ```
+
+En EAS/Railway/CI, configure las mismas variables como variables de ambiente. Use `mobile/.env.example` como plantilla local.
 
 ## Ejecutar
 

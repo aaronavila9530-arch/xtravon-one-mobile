@@ -3,7 +3,7 @@ import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from
 import { Ionicons } from "@expo/vector-icons";
 import { COLORS } from "../config";
 
-export function Screen({ title, subtitle, children, right, minWidth = 430 }) {
+export function Screen({ title, subtitle, children, right, minWidth = 430, horizontal = true }) {
   return (
     <View style={styles.screen}>
       <View style={styles.header}>
@@ -13,17 +13,23 @@ export function Screen({ title, subtitle, children, right, minWidth = 430 }) {
         </View>
         {right}
       </View>
-      <ScrollView
-        horizontal
-        bounces={false}
-        showsHorizontalScrollIndicator
-        style={styles.horizontalScroll}
-        contentContainerStyle={styles.horizontalContent}
-      >
-        <View style={[styles.screenContent, { minWidth }]}>
+      {horizontal ? (
+        <ScrollView
+          horizontal
+          bounces={false}
+          showsHorizontalScrollIndicator
+          style={styles.horizontalScroll}
+          contentContainerStyle={styles.horizontalContent}
+        >
+          <View style={[styles.screenContent, { minWidth }]}>
+            {children}
+          </View>
+        </ScrollView>
+      ) : (
+        <View style={[styles.screenContent, styles.screenContentFluid]}>
           {children}
         </View>
-      </ScrollView>
+      )}
     </View>
   );
 }
@@ -44,11 +50,14 @@ export function Kpi({ label, value, tone = "accent" }) {
 }
 
 export function Button({ label, icon, tone = "accent", onPress, disabled }) {
-  const backgroundColor = disabled ? "#888888" : (COLORS[tone] || COLORS.accent);
+  const backgroundColor = disabled ? COLORS.elevated : (COLORS[tone] || COLORS.accent);
+  const foregroundColor = ["accent", "success", "warning", "info", "teal"].includes(tone) && !disabled
+    ? COLORS.bg
+    : COLORS.text;
   return (
     <Pressable style={[styles.button, { backgroundColor }]} onPress={onPress} disabled={disabled}>
-      {!!icon && <Ionicons name={icon} size={18} color={COLORS.white} />}
-      <Text style={styles.buttonText}>{label}</Text>
+      {!!icon && <Ionicons name={icon} size={18} color={foregroundColor} />}
+      <Text style={[styles.buttonText, { color: foregroundColor }]}>{label}</Text>
     </Pressable>
   );
 }
@@ -145,7 +154,7 @@ export function DistributionChart({ title, data = [], labelKey, valueKey }) {
           <View key={`${item[labelKey]}-${index}`} style={styles.distRow}>
             <View style={[styles.distDot, { backgroundColor: chartPalette[index % chartPalette.length] }]} />
             <Text style={styles.distLabel} numberOfLines={1}>{item[labelKey] || "SIN DATO"}</Text>
-            <Text style={styles.distValue}>{formatNumber(value)} ({pct.toFixed(1)}%)</Text>
+            <Text style={styles.distValue}>{formatNumber(value)} ({pct.toFixed(2)}%)</Text>
           </View>
         );
       })}
@@ -154,7 +163,10 @@ export function DistributionChart({ title, data = [], labelKey, valueKey }) {
 }
 
 function formatNumber(value) {
-  return Number(value || 0).toLocaleString(undefined, { maximumFractionDigits: 1 });
+  return Number(value || 0).toLocaleString(undefined, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+  });
 }
 
 const chartPalette = [COLORS.accent, COLORS.success, COLORS.warning, COLORS.info, COLORS.danger, COLORS.accentLight];
@@ -179,6 +191,9 @@ const styles = StyleSheet.create({
   screenContent: {
     flex: 1,
     width: "100%"
+  },
+  screenContentFluid: {
+    minWidth: 0
   },
   title: {
     fontSize: 24,
@@ -301,7 +316,7 @@ const styles = StyleSheet.create({
   barTrack: {
     flex: 1,
     height: 18,
-    backgroundColor: "#E5E1D7",
+    backgroundColor: COLORS.elevated,
     borderRadius: 4,
     overflow: "hidden"
   },
