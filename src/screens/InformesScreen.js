@@ -161,7 +161,15 @@ export default function InformesScreen() {
           pregunta: prompt,
           operacion_id: selectedOperacionId,
           modo: "Ejecutivo",
-          buscar_web: false
+          buscar_web: false,
+          pantalla: "Informes",
+          copiloto: true,
+          respuesta_breve: false,
+          contexto: {
+            tipo_reporte: selectedReportLabel(),
+            cliente: clienteInforme || "",
+            numero_informe: numeroInforme || ""
+          }
         });
         setTextoInforme(data?.text || data?.respuesta || String(data || ""));
       });

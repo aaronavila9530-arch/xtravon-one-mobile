@@ -762,6 +762,15 @@ export default function ScanScreen({ session, onNavigate }) {
       await guardarColaOffline(pendientes);
       const mensaje = `Procesados: ${data.procesados || 0} | Duplicados: ${data.duplicados || 0} | Errores: ${data.errores || 0} | Pendientes: ${pendientes.length}`;
       setSyncMessage(mensaje);
+      api.registrarPulsoOffline({
+        operacion_id: operacionActiva?.id || null,
+        dispositivo: deviceId || "handheld-pending",
+        perfil: "OPERADOR_PATIO",
+        estado: "SYNC_OK",
+        pendientes_qr: pendientes.length,
+        pendientes_sof: 0,
+        detalle: { origen: "ScanScreen", procesados: data.procesados || 0, duplicados: data.duplicados || 0, errores: data.errores || 0 }
+      }).catch(() => {});
       if (mostrarResultado) {
         Alert.alert("Sincronizacion QR", mensaje);
       }
@@ -782,6 +791,15 @@ export default function ScanScreen({ session, onNavigate }) {
       setOfflineQueue(actualizada);
       await guardarColaOffline(actualizada);
       setSyncMessage(`Sin conexion con backend. Pendientes: ${actualizada.length}. Ultimo intento: ${actualizada[0]?.intentos || 1}`);
+      api.registrarPulsoOffline({
+        operacion_id: operacionActiva?.id || null,
+        dispositivo: deviceId || "handheld-pending",
+        perfil: "OPERADOR_PATIO",
+        estado: "SIN_CONEXION",
+        pendientes_qr: actualizada.length,
+        pendientes_sof: 0,
+        detalle: { origen: "ScanScreen", error: error?.message || "Sin conexion con backend" }
+      }).catch(() => {});
       if (mostrarResultado) {
         Alert.alert("Sin conexion", "Las lecturas siguen guardadas y se reenviaran cuando vuelva la red.");
       }

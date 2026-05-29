@@ -254,6 +254,33 @@ export const api = {
   }),
 
   getInformeOperacion: (id) => request(`/control-operativo/operaciones/${id}/resumen`),
+  getControlPlanOperacion: (id) => request(`/control-operativo/operaciones/${id}/control-plan`),
+  getSaludOperativaOperacion: (id) => request(`/control-operativo/operaciones/${id}/salud-operativa`),
+  getSpcOperacion: (id) => request(`/control-operativo/operaciones/${id}/spc`),
+  getBloqueosInteligentesOperacion: (id) => request(`/control-operativo/operaciones/${id}/bloqueos-inteligentes`),
+  getAuditoriaSeniorOperacion: (id) => request(`/control-operativo/operaciones/${id}/auditoria-senior`),
+  getCierreGuiadoOperacion: (id) => request(`/control-operativo/operaciones/${id}/cierre-guiado`),
+  getModoOfflineOperacion: (id) => request(`/control-operativo/operaciones/${id}/modo-offline`),
+  getProductividadOperacion: (id) => request(`/control-operativo/operaciones/${id}/productividad`),
+  registrarPulsoOffline: (payload = {}) => request("/control-operativo/offline/pulso", {
+    method: "POST",
+    body: JSON.stringify(payload)
+  }),
+  ejecutarCierreGuiadoOperacion: (id, payload = {}) => request(`/control-operativo/operaciones/${id}/cierre-guiado/ejecutar`, {
+    method: "POST",
+    body: JSON.stringify(payload)
+  }),
+  getExcepcionesOperacion: (id, params = {}) => {
+    const query = new URLSearchParams(params).toString();
+    return request(`/control-operativo/operaciones/${id}/excepciones${query ? `?${query}` : ""}`);
+  },
+  generarExcepcionesDesdeBloqueos: (id) => request(`/control-operativo/operaciones/${id}/excepciones/generar-desde-bloqueos`, {
+    method: "POST"
+  }),
+  cerrarExcepcionOperativa: (id, comentario, usuario = "mobile") => request(`/control-operativo/excepciones/${id}/cerrar`, {
+    method: "POST",
+    body: JSON.stringify({ comentario, usuario })
+  }),
   getReporteBuque: (id, params = {}) => {
     const query = new URLSearchParams(params).toString();
     return request(`/reportes-buque/operacion/${id}${query ? `?${query}` : ""}`);
@@ -324,9 +351,27 @@ export const api = {
     method: "POST",
     body: JSON.stringify({ pregunta })
   }),
-  maritimeChat: ({ pregunta, operacion_id, modo = "Ejecutivo", buscar_web = false }) => request("/ai/maritime-chat", {
+  maritimeChat: ({
+    pregunta,
+    operacion_id,
+    modo = "Ejecutivo",
+    buscar_web = false,
+    pantalla = "",
+    copiloto = true,
+    respuesta_breve = true,
+    contexto = null
+  }) => request("/ai/maritime-chat", {
     method: "POST",
-    body: JSON.stringify({ pregunta, operacion_id, modo, buscar_web })
+    body: JSON.stringify({
+      pregunta,
+      operacion_id,
+      modo,
+      buscar_web,
+      pantalla,
+      copiloto,
+      respuesta_breve,
+      contexto
+    })
   }),
   clasificarSofAi: (texto) => request("/ai/sof/clasificar", {
     method: "POST",

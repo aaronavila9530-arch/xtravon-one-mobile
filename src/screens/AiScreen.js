@@ -1008,7 +1008,14 @@ export default function AiScreen() {
           pregunta: finalQuestion,
           operacion_id: selectedRef.current?.id,
           modo: "Ejecutivo",
-          buscar_web: true
+          buscar_web: true,
+          pantalla: "P.O.R.T.I.A",
+          copiloto: true,
+          respuesta_breve: true,
+          contexto: {
+            origen: "pantalla_portia",
+            operacion_nombre: selectedRef.current?.nombre_buque || selectedRef.current?.buque || ""
+          }
         });
       const text = `Pregunta: ${originalQuestion || finalQuestion}\n\n${data.text || ""}`;
       setResultado(sanitizeAiText(text));

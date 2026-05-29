@@ -12,16 +12,25 @@ const WAKE_WORDS = [
   "portia estas ahi",
   "portia está ahí",
   "estas ahi portia",
+  "me escuchas portia",
+  "portia me escuchas",
+  "portia responde",
+  "portia ayudame",
+  "portia ayuda",
   "portia",
   "por tia",
   "porshia",
   "porcha",
-  "porcia"
+  "porcia",
+  "portilla",
+  "porsche"
 ];
 
 const SLEEP_WORDS = [
   "es todo portia",
   "desconectate portia",
+  "duermete portia",
+  "apagate portia",
   "desconéctate portia",
   "silencio portia",
   "gracias portia"
@@ -61,6 +70,29 @@ function stripWake(text) {
 
 function pickAck() {
   return ACKS[Math.floor(Math.random() * ACKS.length)];
+}
+
+function compactAnswer(text) {
+  const clean = String(text || "")
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n")
+    .replace(/https?:\/\/\S+/g, "")
+    .replace(/Proveedor:\s.*$/gim, "")
+    .replace(/Respuesta local\s*/gim, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+  if (clean.length <= 760) return clean;
+  return `${clean.slice(0, 760).replace(/\s+\S*$/, "")}. Puede pedirme detalle si desea ampliar.`;
+}
+
+function operationIdFromSession(session) {
+  return (
+    session?.operacion_id ||
+    session?.operacionId ||
+    session?.active_operacion_id ||
+    session?.operacionActivaId ||
+    null
+  );
 }
 
 export default function GlobalPortia({ enabled = true, session, active }) {
@@ -214,11 +246,20 @@ export default function GlobalPortia({ enabled = true, session, active }) {
     try {
       const data = await api.maritimeChat({
         pregunta: command,
-        operacion_id: null,
+        operacion_id: operationIdFromSession(session),
         modo: "Operativo",
-        buscar_web: false
+        buscar_web: false,
+        pantalla: active || "global",
+        copiloto: true,
+        respuesta_breve: true,
+        contexto: {
+          origen: "portia_global_mobile",
+          pantalla: active || "",
+          usuario: session?.nombre || "",
+          rol: session?.rol || ""
+        }
       });
-      const answer = String(data?.text || data?.respuesta || "No tengo respuesta disponible.").slice(0, 900);
+      const answer = compactAnswer(data?.text || data?.respuesta || "No tengo respuesta disponible.");
       setState("HABLANDO");
       Speech.speak(answer, {
         language: "es-ES",
