@@ -13,7 +13,10 @@
       "distribution": "internal",
       "channel": "preview",
       "env": {
-        "EXPO_PUBLIC_DEVICE_VARIANT": "celular"
+        "EXPO_PUBLIC_DEVICE_VARIANT": "celular",
+        "EXPO_PUBLIC_API_BASE_URL": "https://erp-elsurco-backend-production.up.railway.app",
+        "EXPO_PUBLIC_API_BASE_URL_CELULAR": "https://erp-elsurco-backend-production.up.railway.app",
+        "EXPO_PUBLIC_API_BASE_URL_HANDHELD": "https://erp-elsurco-backend-production.up.railway.app"
       },
       "android": {
         "buildType": "apk"
@@ -23,7 +26,10 @@
       "distribution": "internal",
       "channel": "celular",
       "env": {
-        "EXPO_PUBLIC_DEVICE_VARIANT": "celular"
+        "EXPO_PUBLIC_DEVICE_VARIANT": "celular",
+        "EXPO_PUBLIC_API_BASE_URL": "https://erp-elsurco-backend-production.up.railway.app",
+        "EXPO_PUBLIC_API_BASE_URL_CELULAR": "https://erp-elsurco-backend-production.up.railway.app",
+        "EXPO_PUBLIC_API_BASE_URL_HANDHELD": "https://erp-elsurco-backend-production.up.railway.app"
       },
       "android": {
         "buildType": "apk"
@@ -33,7 +39,10 @@
       "distribution": "internal",
       "channel": "handheld",
       "env": {
-        "EXPO_PUBLIC_DEVICE_VARIANT": "handheld"
+        "EXPO_PUBLIC_DEVICE_VARIANT": "handheld",
+        "EXPO_PUBLIC_API_BASE_URL": "https://erp-elsurco-backend-production.up.railway.app",
+        "EXPO_PUBLIC_API_BASE_URL_CELULAR": "https://erp-elsurco-backend-production.up.railway.app",
+        "EXPO_PUBLIC_API_BASE_URL_HANDHELD": "https://erp-elsurco-backend-production.up.railway.app"
       },
       "android": {
         "buildType": "apk"
@@ -42,6 +51,11 @@
     "production": {
       "autoIncrement": true,
       "channel": "production",
+      "env": {
+        "EXPO_PUBLIC_API_BASE_URL": "https://erp-elsurco-backend-production.up.railway.app",
+        "EXPO_PUBLIC_API_BASE_URL_CELULAR": "https://erp-elsurco-backend-production.up.railway.app",
+        "EXPO_PUBLIC_API_BASE_URL_HANDHELD": "https://erp-elsurco-backend-production.up.railway.app"
+      },
       "android": {
         "buildType": "app-bundle"
       }
