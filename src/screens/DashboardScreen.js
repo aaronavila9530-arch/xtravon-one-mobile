@@ -1,32 +1,43 @@
-import React, { useMemo, useState } from "react";
-import { Alert, Linking, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import React, { useEffect, useMemo, useState } from "react";
+import { Alert, Linking, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { api } from "../api/client";
 import { Button, Card, DistributionChart, EmptyState, Kpi, Loading, Row, Screen } from "../components/ui";
 import { COLORS } from "../config";
 
 const emptyFilters = {
   empresa: "",
+  bodega: "",
   guia: "",
   producto: "",
   chofer: "",
-  placa: ""
+  placa: "",
+  estado: "",
+  etapa_qr: ""
 };
 
 const filterLabels = {
   empresa: "Empresa",
+  bodega: "Bodega",
   guia: "Guia",
   producto: "Producto",
   chofer: "Chofer",
-  placa: "Placa"
+  placa: "Placa",
+  estado: "Estado",
+  etapa_qr: "Etapa QR"
 };
 
 const optionMap = {
   empresa: "empresas",
+  bodega: "bodegas",
   guia: "guias",
   producto: "productos",
   chofer: "choferes",
-  placa: "placas"
+  placa: "placas",
+  estado: "estados",
+  etapa_qr: "etapas_qr"
 };
+
+const manualFilterKeys = ["guia", "chofer", "placa", "estado", "etapa_qr"];
 
 const bodegaColors = {
   1: COLORS.teal,
@@ -64,6 +75,7 @@ export default function DashboardScreen() {
   const [modoOfflineLoading, setModoOfflineLoading] = useState(false);
   const [productividad, setProductividad] = useState(null);
   const [productividadLoading, setProductividadLoading] = useState(false);
+  const [hasGenerated, setHasGenerated] = useState(false);
 
   const params = useMemo(() => cleanParams(filters), [filters]);
   const opcionesCompletas = useMemo(() => mergeOpciones(filterData?.opciones || {}, data), [filterData, data]);
@@ -102,29 +114,35 @@ export default function DashboardScreen() {
     }
   }
 
-  async function loadFilters() {
-    if (!selectedOperacion?.id) {
-      Alert.alert("Operacion requerida", "Primero presione Buscar operacion y seleccione un buque.");
-      return;
-    }
+  async function loadFiltersForOperation(operacionId, silent = false) {
+    if (!operacionId) return;
     setFiltersLoading(true);
     try {
-      const response = await api.getReporteBuqueFiltros(selectedOperacion.id);
+      const response = await api.getReporteBuqueFiltros(operacionId);
       setFilterData(response);
       applyDateHints(response?.opciones || {});
     } catch (error) {
-      setFilterData({ error: error.message });
+      if (!silent) setFilterData({ error: error.message });
     } finally {
       setFiltersLoading(false);
     }
   }
 
-  async function loadReport() {
+  async function loadFilters() {
     if (!selectedOperacion?.id) {
-      Alert.alert("Operacion requerida", "Seleccione una operacion antes de generar datos.");
+      Alert.alert("Operacion requerida", "Primero presione Buscar operacion y seleccione un buque.");
       return;
     }
-    setLoading(true);
+    await loadFiltersForOperation(selectedOperacion.id);
+  }
+
+  async function loadReport(options = {}) {
+    const silent = Boolean(options.silent);
+    if (!selectedOperacion?.id) {
+      if (!silent) Alert.alert("Operacion requerida", "Seleccione una operacion antes de generar datos.");
+      return;
+    }
+    if (!silent) setLoading(true);
     try {
       const [response, filtros] = await Promise.all([
         api.getReporteBuque(selectedOperacion.id, params),
@@ -134,10 +152,11 @@ export default function DashboardScreen() {
         setFilterData(filtros);
       }
       setData(response);
+      setHasGenerated(true);
     } catch (error) {
       setData({ error: error.message });
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }
 
@@ -155,6 +174,10 @@ export default function DashboardScreen() {
     setCierreGuiado(null);
     setModoOffline(null);
     setProductividad(null);
+    setHasGenerated(false);
+    if (op?.id) {
+      loadFiltersForOperation(op.id, true);
+    }
   }
 
   function updateFilter(key, value) {
@@ -174,7 +197,20 @@ export default function DashboardScreen() {
     setCierreGuiado(null);
     setModoOffline(null);
     setProductividad(null);
+    setHasGenerated(false);
   }
+
+  function clearVisualFilters() {
+    setFilters(emptyFilters);
+  }
+
+  useEffect(() => {
+    if (!hasGenerated || !selectedOperacion?.id) return undefined;
+    const timer = setTimeout(() => {
+      loadReport({ silent: true });
+    }, 700);
+    return () => clearTimeout(timer);
+  }, [filters]);
 
   function applyDateHints(opciones) {
     if (!opciones) return;
@@ -418,19 +454,6 @@ export default function DashboardScreen() {
           <View style={styles.actions}>
             <Button label="Buscar operacion" icon="boat-outline" tone="accent" onPress={loadOperaciones} />
             <Button label="Generar datos" icon="bar-chart-outline" tone="info" onPress={loadReport} />
-            <Button label="Cargar filtros" icon="options-outline" tone="info" onPress={loadFilters} />
-            <Button label="Salud operativa" icon="pulse-outline" tone="info" onPress={loadSaludOperativa} />
-            <Button label="SPC" icon="analytics-outline" tone="info" onPress={loadSpc} />
-            <Button label="Bloqueos" icon="lock-closed-outline" tone="info" onPress={loadBloqueosInteligentes} />
-            <Button label="Excepciones" icon="warning-outline" tone="info" onPress={loadExcepcionesOperativas} />
-            <Button label="Auditoria senior" icon="ribbon-outline" tone="info" onPress={loadAuditoriaSenior} />
-            <Button label="Cierre guiado" icon="checkmark-done-outline" tone="info" onPress={loadCierreGuiado} />
-            <Button label="Modo offline" icon="cloud-offline-outline" tone="info" onPress={loadModoOffline} />
-            <Button label="Productividad" icon="speedometer-outline" tone="info" onPress={loadProductividad} />
-            <Button label="Ejecutar cierre" icon="flag-outline" tone="danger" onPress={ejecutarCierreGuiado} />
-            <Button label="Generar excepciones" icon="construct-outline" tone="info" onPress={generarExcepcionesOperativas} />
-            <Button label="Control plan" icon="shield-checkmark-outline" tone="info" onPress={loadControlPlan} />
-            <Button label="Limpiar" icon="refresh-outline" tone="danger" onPress={clearFilters} />
           </View>
 
           {operationsLoading && <Loading label="Buscando operaciones..." />}
@@ -450,7 +473,7 @@ export default function DashboardScreen() {
           {filtersLoading && <Loading label="Cargando filtros dinamicos..." />}
           {!!filterData?.error && <Text style={styles.errorText}>{filterData.error}</Text>}
           <View style={styles.filterGrid}>
-            {Object.keys(emptyFilters).map((key) => (
+            {manualFilterKeys.map((key) => (
               <FilterCombo
                 key={key}
                 name={key}
@@ -508,22 +531,71 @@ export default function DashboardScreen() {
         {!loading && data && !data.error && (
           <>
             <KpiGrid kpis={kpis} />
-            <ShipProgress bodegas={bodegas} />
+            <ShipProgress
+              bodegas={bodegas}
+              onSelect={(numero) => updateFilter("bodega", String(numero))}
+              onClear={clearVisualFilters}
+            />
             <ExecutiveReading operacion={data.operacion || selectedOperacion || {}} kpis={kpis} alertas={alertas} plan={plan} />
 
             <PlanPanel plan={plan} />
 
-            <MetricBarChart title="Descargado por bodega (MT)" data={orderedBodegaChart(graficos.avance_bodegas)} labelKey="bodega" valueKey="retirado_mt" bodega />
-            <MetricBarChart title="Pendiente por bodega (MT)" data={orderedBodegaChart(graficos.faltante_bodegas)} labelKey="bodega" valueKey="faltante_mt" bodega />
+            <MetricBarChart
+              title="Descargado por bodega (MT)"
+              data={orderedBodegaChart(graficos.avance_bodegas)}
+              labelKey="bodega"
+              valueKey="retirado_mt"
+              bodega
+              onSelect={(item) => updateFilter("bodega", String(bodegaNumber(item.bodega || item.bodega_numero)))}
+              onClear={clearVisualFilters}
+            />
+            <MetricBarChart
+              title="Pendiente por bodega (MT)"
+              data={orderedBodegaChart(graficos.faltante_bodegas)}
+              labelKey="bodega"
+              valueKey="faltante_mt"
+              bodega
+              onSelect={(item) => updateFilter("bodega", String(bodegaNumber(item.bodega || item.bodega_numero)))}
+              onClear={clearVisualFilters}
+            />
             <DistributionChart title="Estado descarga" data={graficos.estado_descarga || []} labelKey="estado" valueKey="valor" />
-            <MetricBarChart title="Descargado por cliente (MT)" data={graficos.retiro_por_cliente || []} labelKey="cliente" valueKey="retirado_mt" />
-            <MetricBarChart title="Descargado por producto (MT)" data={graficos.retiro_por_producto || []} labelKey="producto" valueKey="retirado_mt" />
+            <MetricBarChart
+              title="Descargado por cliente (MT)"
+              data={graficos.retiro_por_cliente || []}
+              labelKey="cliente"
+              valueKey="retirado_mt"
+              onSelect={(item) => updateFilter("empresa", item.cliente || item.empresa || "")}
+              onClear={clearVisualFilters}
+            />
+            <MetricBarChart
+              title="Descargado por producto (MT)"
+              data={graficos.retiro_por_producto || []}
+              labelKey="producto"
+              valueKey="retirado_mt"
+              onSelect={(item) => updateFilter("producto", item.producto || "")}
+              onClear={clearVisualFilters}
+            />
             <DistributionChart title="Estado de guias" data={graficos.estado_guias || []} labelKey="estado" valueKey="valor" />
             <MetricLine title="Tendencia diaria descargado (MT)" data={graficos.tendencia_fecha || []} labelKey="fecha" valueKey="retirado_mt" />
             <MetricBarChart title="Duracion por camion (min)" data={graficos.duracion_por_camion || []} labelKey="camion" valueKey="duracion_min" />
-            <MetricBarChart title="Avance por bodega (%)" data={orderedBodegaChart(graficos.avance_bodegas)} labelKey="bodega" valueKey="avance_pct" bodega />
+            <MetricBarChart
+              title="Avance por bodega (%)"
+              data={orderedBodegaChart(graficos.avance_bodegas)}
+              labelKey="bodega"
+              valueKey="avance_pct"
+              bodega
+              onSelect={(item) => updateFilter("bodega", String(bodegaNumber(item.bodega || item.bodega_numero)))}
+              onClear={clearVisualFilters}
+            />
 
-            <CuotasTable rows={clientes} />
+            <CuotasTable
+              rows={clientes}
+              onSelect={(row) => {
+                if (row.empresa) updateFilter("empresa", row.empresa);
+                if (row.producto) updateFilter("producto", row.producto);
+                if (row.bodega_numero) updateFilter("bodega", String(row.bodega_numero));
+              }}
+            />
             <AlertasTable rows={alertas} />
           </>
         )}
@@ -624,9 +696,10 @@ function KpiGrid({ kpis }) {
   );
 }
 
-function ShipProgress({ bodegas }) {
+function ShipProgress({ bodegas, onSelect, onClear }) {
+  const source = Array.isArray(bodegas) ? bodegas : [];
   const ordered = [5, 4, 3, 2, 1].map((numero) => {
-    const row = (bodegas || []).find((item) => Number(item.bodega_numero) === numero) || { bodega_numero: numero };
+    const row = source.find((item) => Number(item.bodega_numero) === numero) || { bodega_numero: numero };
     const capacidad = Number(row.capacidad_mt || 0);
     const retirado = Number(row.retirado_mt || 0);
     const faltante = Number(row.faltante_mt ?? Math.max(capacidad - retirado, 0));
@@ -636,17 +709,25 @@ function ShipProgress({ bodegas }) {
   });
 
   return (
-    <Card>
+    <Pressable onPress={onClear}>
+      <Card>
       <Text style={styles.sectionTitle}>Progreso visual por bodega</Text>
       <Text style={styles.shipHint}>Cada bodega se vacia conforme peso lleno - peso vacio se descuenta contra su capacidad MT.</Text>
       <View style={styles.shipBody}>
         {ordered.map((item) => (
-          <View key={item.numero} style={[styles.hold, { backgroundColor: bodegaColors[item.numero] || COLORS.accent }]}>
+          <Pressable
+            key={item.numero}
+            style={[styles.hold, { backgroundColor: bodegaColors[item.numero] || COLORS.accent }]}
+            onPress={(event) => {
+              event?.stopPropagation?.();
+              onSelect?.(item.numero);
+            }}
+          >
             <Text style={styles.holdTitle}>B{item.numero}</Text>
             <Text style={styles.holdText}>{formatNumber(item.faltante)}/{formatNumber(item.capacidad)}</Text>
             <Text style={styles.holdText}>Pend. {formatNumber(item.pendientePct)}%</Text>
             <Text style={styles.holdText}>Desc. {formatNumber(item.avancePct)}%</Text>
-          </View>
+          </Pressable>
         ))}
       </View>
       <View style={styles.shipDownloadedRow}>
@@ -654,7 +735,8 @@ function ShipProgress({ bodegas }) {
           <Text key={item.numero} style={styles.shipDownloaded}>B{item.numero}: {formatNumber(item.retirado)} MT</Text>
         ))}
       </View>
-    </Card>
+      </Card>
+    </Pressable>
   );
 }
 
@@ -1103,34 +1185,46 @@ function ProductividadPanel({ data }) {
   );
 }
 
-function MetricBarChart({ title, data = [], labelKey, valueKey, bodega = false }) {
-  const rows = data.slice(0, 10);
+function MetricBarChart({ title, data = [], labelKey, valueKey, bodega = false, onSelect, onClear }) {
+  const source = Array.isArray(data) ? data : [];
+  const rows = source.slice(0, 10);
   const max = Math.max(...rows.map((item) => Number(item[valueKey] || 0)), 1);
   return (
-    <Card>
-      <Text style={styles.chartTitle}>{title}</Text>
-      {!rows.length && <Text style={styles.chartEmpty}>Sin datos para mostrar</Text>}
-      {rows.map((item, index) => {
-        const value = Number(item[valueKey] || 0);
-        const pct = Math.max((value / max) * 100, 3);
-        const numero = bodegaNumber(item[labelKey] || item.bodega_numero);
-        const color = bodega ? (bodegaColors[numero] || COLORS.accent) : COLORS.accent;
-        return (
-          <View key={`${item[labelKey]}-${index}`} style={styles.metricRow}>
-            <Text style={styles.metricLabel} numberOfLines={1}>{item[labelKey] || "SIN DATO"}</Text>
-            <View style={styles.metricTrack}>
-              <View style={[styles.metricFill, { width: `${pct}%`, backgroundColor: color }]} />
-            </View>
-            <Text style={styles.metricValue}>{formatNumber(value)}</Text>
-          </View>
-        );
-      })}
-    </Card>
+    <Pressable onPress={onClear}>
+      <Card>
+        <Text style={styles.chartTitle}>{title}</Text>
+        {!rows.length && <Text style={styles.chartEmpty}>Sin datos para mostrar</Text>}
+        {rows.map((item, index) => {
+          const value = Number(item[valueKey] || 0);
+          const pct = Math.max((value / max) * 100, 3);
+          const numero = bodegaNumber(item[labelKey] || item.bodega_numero);
+          const color = bodega ? (bodegaColors[numero] || COLORS.accent) : COLORS.accent;
+          const RowComponent = onSelect ? Pressable : View;
+          return (
+            <RowComponent
+              key={`${item[labelKey]}-${index}`}
+              style={styles.metricRow}
+              onPress={(event) => {
+                event?.stopPropagation?.();
+                onSelect?.(item);
+              }}
+            >
+              <Text style={styles.metricLabel} numberOfLines={1}>{item[labelKey] || "SIN DATO"}</Text>
+              <View style={styles.metricTrack}>
+                <View style={[styles.metricFill, { width: `${pct}%`, backgroundColor: color }]} />
+              </View>
+              <Text style={styles.metricValue}>{formatNumber(value)}</Text>
+            </RowComponent>
+          );
+        })}
+      </Card>
+    </Pressable>
   );
 }
 
 function MetricLine({ title, data = [], labelKey, valueKey }) {
-  const rows = data.slice(0, 12);
+  const source = Array.isArray(data) ? data : [];
+  const rows = source.slice(0, 12);
   const max = Math.max(...rows.map((item) => Number(item[valueKey] || 0)), 1);
   return (
     <Card>
@@ -1156,15 +1250,16 @@ function MetricLine({ title, data = [], labelKey, valueKey }) {
   );
 }
 
-function CuotasTable({ rows = [] }) {
+function CuotasTable({ rows = [], onSelect }) {
+  const source = Array.isArray(rows) ? rows : [];
   return (
     <Card>
       <Text style={styles.sectionTitle}>Cuota vs descargado real</Text>
       <ScrollView horizontal showsHorizontalScrollIndicator>
         <View>
           <TableHeader columns={["Cliente", "Producto", "Bodega", "Cuota MT", "Descargado MT", "Pendiente MT", "Avance %"]} />
-          {rows.slice(0, 30).map((row, index) => (
-            <View key={`${row.empresa}-${row.producto}-${index}`} style={styles.tableRow}>
+          {source.slice(0, 30).map((row, index) => (
+            <Pressable key={`${row.empresa}-${row.producto}-${index}`} style={styles.tableRow} onPress={() => onSelect?.(row)}>
               <Cell value={row.empresa} width={145} />
               <Cell value={row.producto} width={130} />
               <Cell value={row.bodega_numero || "-"} width={80} />
@@ -1172,21 +1267,22 @@ function CuotasTable({ rows = [] }) {
               <Cell value={formatNumber(row.retirado_mt)} width={130} />
               <Cell value={formatNumber(row.faltante_mt)} width={130} />
               <Cell value={`${formatNumber(row.avance_pct)}%`} width={105} />
-            </View>
+            </Pressable>
           ))}
         </View>
       </ScrollView>
-      {!rows.length && <Text style={styles.chartEmpty}>Sin datos para mostrar</Text>}
+      {!source.length && <Text style={styles.chartEmpty}>Sin datos para mostrar</Text>}
     </Card>
   );
 }
 
 function AlertasTable({ rows = [] }) {
+  const source = Array.isArray(rows) ? rows : [];
   return (
     <Card>
       <Text style={styles.sectionTitle}>Alertas operativas</Text>
-      {!rows.length && <Text style={styles.chartEmpty}>Sin alertas operativas</Text>}
-      {rows.slice(0, 20).map((row, index) => (
+      {!source.length && <Text style={styles.chartEmpty}>Sin alertas operativas</Text>}
+      {source.slice(0, 20).map((row, index) => (
         <View key={`${row.tipo}-${index}`} style={styles.alertRow}>
           <Text style={styles.alertType}>{row.severidad || "-"} | {row.tipo || "-"}</Text>
           <Text style={styles.alertText}>{row.mensaje || "-"}</Text>
@@ -1215,7 +1311,11 @@ function cleanParams(filters) {
   Object.entries(filters).forEach(([key, value]) => {
     const clean = String(value || "").trim();
     if (clean) {
-      params[key] = clean;
+      if (key === "bodega") {
+        params.bodega_numero = clean;
+      } else {
+        params[key] = clean;
+      }
     }
   });
   return params;
@@ -1224,24 +1324,35 @@ function cleanParams(filters) {
 function mergeOpciones(opciones, data) {
   const merged = {
     empresas: [...(opciones?.empresas || [])],
+    bodegas: [...(opciones?.bodegas || [])],
     guias: [...(opciones?.guias || [])],
     productos: [...(opciones?.productos || [])],
     choferes: [...(opciones?.choferes || [])],
-    placas: [...(opciones?.placas || [])]
+    placas: [...(opciones?.placas || [])],
+    estados: [...(opciones?.estados || [])],
+    etapas_qr: [...(opciones?.etapas_qr || [])]
   };
 
   const push = (key, value) => {
     const text = String(value ?? "").trim();
-    if (text) merged[key].push(text);
+    if (!text) return;
+    if (!Array.isArray(merged[key])) {
+      merged[key] = [];
+    }
+    merged[key].push(text);
   };
 
   const scanRows = (rows = []) => {
+    if (!Array.isArray(rows)) return;
     rows.forEach((row) => {
       push("empresas", row.empresa || row.cliente);
+      push("bodegas", row.bodega_numero || row.bodega);
       push("guias", row.guia);
       push("productos", row.producto);
       push("choferes", row.chofer);
       push("placas", row.placa);
+      push("estados", row.estado);
+      push("etapas_qr", row.etapa_qr);
     });
   };
 
@@ -1255,6 +1366,8 @@ function mergeOpciones(opciones, data) {
     const graficos = data.graficos || {};
     scanRows(graficos.retiro_por_cliente || []);
     scanRows(graficos.retiro_por_producto || []);
+    scanRows(graficos.avance_bodegas || []);
+    scanRows(graficos.faltante_bodegas || []);
     scanRows(graficos.viajes_por_cliente || []);
     scanRows(graficos.viajes_por_producto || []);
     scanRows(graficos.duracion_por_camion || []);
