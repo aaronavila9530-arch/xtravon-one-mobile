@@ -683,9 +683,24 @@ export default function ScanScreen({ session, onNavigate }) {
 
   function esErrorReintentable(error) {
     const message = String(error?.message || "").toLowerCase();
+    const status = Number(error?.status || 0);
+    const esErrorQrControlado = (
+      (status >= 400 && status < 500) ||
+      /\b4\d\d\b/.test(message) ||
+      message.includes("qr no activo") ||
+      message.includes("qr no autorizado") ||
+      message.includes("qr expirado") ||
+      message.includes("qr no valido") ||
+      message.includes("no habilitado") ||
+      message.includes("cumplio sus escaneos") ||
+      message.includes("cancelada")
+    );
+    if (esErrorQrControlado) {
+      return false;
+    }
     return (
       !error?.status ||
-      Number(error.status) >= 500 ||
+      status >= 500 ||
       message.includes("network request failed") ||
       message.includes("failed to fetch") ||
       message.includes("timeout") ||
