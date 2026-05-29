@@ -5,12 +5,13 @@ export const ANDROID_PACKAGE = IS_HANDHELD ? "com.xtravon.one.handheld" : "com.x
 export const APP_DISPLAY_NAME = IS_HANDHELD ? "XTRAVON Handheld" : "XTRAVON One";
 
 const normalizeApiBase = (value) => String(value || "").trim().replace(/\/+$/, "");
+const DEFAULT_API_BASE_URL = "https://erp-elsurco-backend-production.up.railway.app";
 const variantApiBase = IS_HANDHELD
   ? process.env.EXPO_PUBLIC_API_BASE_URL_HANDHELD
   : process.env.EXPO_PUBLIC_API_BASE_URL_CELULAR;
 
 export const API_BASE = normalizeApiBase(
-  variantApiBase || process.env.EXPO_PUBLIC_API_BASE_URL
+  variantApiBase || process.env.EXPO_PUBLIC_API_BASE_URL || DEFAULT_API_BASE_URL
 );
 export const API_BASE_CONFIGURED = Boolean(API_BASE);
 
