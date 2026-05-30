@@ -1340,7 +1340,7 @@ export default function ScanScreen({ session, onNavigate }) {
       setDataWedgeStatus("Disparo SE4710 disponible solo en build handheld.");
       return;
   }
-    const ok = enviarComandoDataWedge("com.symbol.datawedge.api.SOFT_SCAN_TRIGGER", "START_SCANNING");
+    const ok = enviarComandoDataWedge("com.symbol.datawedge.api.SOFT_SCAN_TRIGGER", "TOGGLE_SCANNING");
     if (!ok) {
       setDataWedgeStatus("Disparo nativo no disponible. Use el boton fisico amarillo o camara de respaldo.");
       try {
@@ -1351,7 +1351,7 @@ export default function ScanScreen({ session, onNavigate }) {
     } else {
       setDataWedgeStatus("SE4710 activado. Apunte al QR; si no lee, presione el gatillo amarillo.");
       setTimeout(() => {
-        enviarComandoDataWedge("com.symbol.datawedge.api.SOFT_SCAN_TRIGGER", "STOP_SCANNING");
+        enviarComandoDataWedge("com.symbol.datawedge.api.SOFT_SCAN_TRIGGER", "TOGGLE_SCANNING");
       }, 6000);
     }
   }
