@@ -900,9 +900,14 @@ export default function ScanScreen({ session, onNavigate }) {
           total: rows.length,
           actualizado_en: cache.actualizado_en
         });
+        const cacheSinFirma = Boolean(cacheData?.politica?.cache_sin_firma);
         Alert.alert(
-          "Datos offline listos",
-          `${rows.length} guia(s) activas/asignadas y ${cache.choferes.length} chofer(es) descargados para ${cache.buque || "la operacion activa"}.\n\nSi se cae la red, el handheld podra validar QR cacheados, abrir captura y guardar escaneos en memoria local.`
+          cacheSinFirma ? "Cache descargado sin firma offline" : "Datos offline listos",
+          `${rows.length} guia(s) activas/asignadas y ${cache.choferes.length} chofer(es) descargados para ${cache.buque || "la operacion activa"}.\n\n${
+            cacheSinFirma
+              ? "Railway no tiene QR_SECRET valido. La operacion online puede consultar datos, pero el modo offline seguro no quedara habilitado hasta configurar QR_SECRET y regenerar QR."
+              : "Si se cae la red, el handheld podra validar QR cacheados, abrir captura y guardar escaneos en memoria local."
+          }`
         );
       });
     } catch (error) {
