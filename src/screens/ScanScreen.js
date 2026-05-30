@@ -185,14 +185,14 @@ function enviarComandoDataWedge(extraName, extraValue) {
   const dw = getDataWedgeModule();
   if (!dw) return false;
   try {
-  const extras = {};
-  extras[extraName] = extraValue;
-  extras.SEND_RESULT = "true";
-  dw.sendBroadcastWithExtras({
-    action: "com.symbol.datawedge.api.ACTION",
-    extras
-  });
-  return true;
+    const extras = {};
+    extras[extraName] = extraValue;
+    extras.SEND_RESULT = "true";
+    dw.sendBroadcastWithExtras({
+      action: "com.symbol.datawedge.api.ACTION",
+      extras
+    });
+    return true;
   } catch (_error) {
     return false;
   }
@@ -203,10 +203,10 @@ function configurarPerfilDataWedge() {
   if (!dw) return false;
 
   try {
-  dw.registerBroadcastReceiver({
-    filterActions: DATAWEDGE_ACTIONS,
-    filterCategories: [DATAWEDGE_CATEGORY]
-  });
+    dw.registerBroadcastReceiver({
+      filterActions: DATAWEDGE_ACTIONS,
+      filterCategories: [DATAWEDGE_CATEGORY]
+    });
   } catch (_error) {
     return false;
   }
@@ -214,7 +214,7 @@ function configurarPerfilDataWedge() {
   enviarComandoDataWedge("com.symbol.datawedge.api.CREATE_PROFILE", DATAWEDGE_PROFILE);
   enviarComandoDataWedge(
     "com.symbol.datawedge.api.SET_CONFIG",
-    JSON.stringify({
+    {
       PROFILE_NAME: DATAWEDGE_PROFILE,
       PROFILE_ENABLED: "true",
       CONFIG_MODE: "UPDATE",
@@ -246,11 +246,11 @@ function configurarPerfilDataWedge() {
           PLUGIN_NAME: "KEYSTROKE",
           RESET_CONFIG: "true",
           PARAM_LIST: {
-            keystroke_output_enabled: "true"
+            keystroke_output_enabled: "false"
           }
         }
       ]
-    })
+    }
   );
   enviarComandoDataWedge("com.symbol.datawedge.api.SWITCH_TO_PROFILE", DATAWEDGE_PROFILE);
   return true;
@@ -460,6 +460,21 @@ export default function ScanScreen({ session, onNavigate }) {
         clearTimeout(hardwareScanTimerRef.current);
       }
     };
+  }, [isOperator]);
+
+  useEffect(() => {
+    if (isOperator && IS_HANDHELD) {
+      setUsarCamaraRespaldo(false);
+      setCameraReady(false);
+      setCameraError("");
+      setTimeout(() => {
+        try {
+          hardwareInputRef.current?.focus?.();
+        } catch (_error) {
+          // El SE4710 por DataWedge es el lector principal; la camara no se monta.
+        }
+      }, 300);
+    }
   }, [isOperator]);
 
   useEffect(() => {
@@ -1339,8 +1354,11 @@ export default function ScanScreen({ session, onNavigate }) {
     if (!IS_HANDHELD) {
       setDataWedgeStatus("Disparo SE4710 disponible solo en build handheld.");
       return;
-  }
-    const ok = enviarComandoDataWedge("com.symbol.datawedge.api.SOFT_SCAN_TRIGGER", "TOGGLE_SCANNING");
+    }
+    setUsarCamaraRespaldo(false);
+    setCameraReady(false);
+    setCameraError("");
+    const ok = enviarComandoDataWedge("com.symbol.datawedge.api.SOFT_SCAN_TRIGGER", "START_SCANNING");
     if (!ok) {
       setDataWedgeStatus("Disparo nativo no disponible. Use el boton fisico amarillo o camara de respaldo.");
       try {
@@ -1351,7 +1369,7 @@ export default function ScanScreen({ session, onNavigate }) {
     } else {
       setDataWedgeStatus("SE4710 activado. Apunte al QR; si no lee, presione el gatillo amarillo.");
       setTimeout(() => {
-        enviarComandoDataWedge("com.symbol.datawedge.api.SOFT_SCAN_TRIGGER", "TOGGLE_SCANNING");
+        enviarComandoDataWedge("com.symbol.datawedge.api.SOFT_SCAN_TRIGGER", "STOP_SCANNING");
       }, 6000);
     }
   }
