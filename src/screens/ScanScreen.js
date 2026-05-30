@@ -395,6 +395,10 @@ export default function ScanScreen({ session, onNavigate }) {
           setSyncMessage(`${items.length} lectura(s) pendientes por sincronizar.`);
         }
       }
+    }).catch((error) => {
+      if (active) {
+        setSyncMessage(`Memoria offline no inicializada: ${error?.message || "error local"}`);
+      }
     });
     return () => {
       active = false;
@@ -420,9 +424,15 @@ export default function ScanScreen({ session, onNavigate }) {
     );
 
     const handler = (intent) => {
-      const scan = extraerLecturaDataWedge(intent);
-      if (scan?.data) {
-        procesarLecturaHardware(scan.data, scan.source || "SE4710");
+      try {
+        const scan = extraerLecturaDataWedge(intent);
+        if (scan?.data) {
+          procesarLecturaHardware(scan.data, scan.source || "SE4710").catch((error) => {
+            setDataWedgeStatus(`Lectura recibida, pero no se pudo procesar: ${error?.message || "error"}`);
+          });
+        }
+      } catch (error) {
+        setDataWedgeStatus(`DataWedge activo con aviso: ${error?.message || "lectura no procesada"}`);
       }
     };
 
@@ -445,7 +455,13 @@ export default function ScanScreen({ session, onNavigate }) {
       return undefined;
     }
     setUsarCamaraRespaldo(false);
-    const focus = () => hardwareInputRef.current?.focus?.();
+    const focus = () => {
+      try {
+        hardwareInputRef.current?.focus?.();
+      } catch (_error) {
+        // El enfoque del teclado wedge es auxiliar; nunca debe cerrar la app.
+      }
+    };
     focus();
     const focusTimer = setInterval(focus, 1500);
     return () => clearInterval(focusTimer);
@@ -1223,28 +1239,44 @@ export default function ScanScreen({ session, onNavigate }) {
   }
 
   async function procesarLecturaHardware(rawValue, source = "SE4710") {
-    const value = String(rawValue || "").trim().replace(/[\r\n]+/g, "");
-    if (!value) return;
+    try {
+      const value = String(rawValue || "").trim().replace(/[\r\n]+/g, "");
+      if (!value) return;
 
-    const now = Date.now();
-    if (lastHardwareScanRef.current.value === value && now - lastHardwareScanRef.current.at < 1300) {
-      return;
+      const now = Date.now();
+      if (lastHardwareScanRef.current.value === value && now - lastHardwareScanRef.current.at < 1300) {
+        return;
+      }
+      lastHardwareScanRef.current = { value, at: now };
+      setHardwareScanValue("");
+      setScanned(true);
+      setQrError("");
+      setManualId(value);
+      setDataWedgeStatus(`Lectura ${source}: ${value.slice(0, 80)}`);
+
+      const parsed = extraerDatosQr(value);
+      if (parsed?.id) {
+        await loadBoleta(parsed.id, parsed.token, parsed.raw);
+        return;
+      }
+
+      setQrError("Lectura recibida por SE4710, pero no pertenece a XTRAVON ONE / GRAIN CONTROL.");
+      Alert.alert("QR no valido", "Lectura recibida por el lector SE4710, pero ese QR no pertenece a XTRAVON ONE / GRAIN CONTROL.");
+    } catch (error) {
+      setScanned(false);
+      setQrError(error?.message || "No se pudo procesar la lectura del SE4710.");
+      setDataWedgeStatus(`SE4710 activo. Ultimo error controlado: ${error?.message || "lectura no procesada"}`);
+    } finally {
+      if (IS_HANDHELD) {
+        setTimeout(() => {
+          try {
+            hardwareInputRef.current?.focus?.();
+          } catch (_error) {
+            // No bloquear lectura por un error de foco.
+          }
+        }, 250);
+      }
     }
-    lastHardwareScanRef.current = { value, at: now };
-    setHardwareScanValue("");
-    setScanned(true);
-    setQrError("");
-    setManualId(value);
-    setDataWedgeStatus(`Lectura ${source}: ${value.slice(0, 80)}`);
-
-    const parsed = extraerDatosQr(value);
-    if (parsed?.id) {
-      await loadBoleta(parsed.id, parsed.token, parsed.raw);
-      return;
-    }
-
-    setQrError("Lectura recibida por SE4710, pero no pertenece a XTRAVON ONE / GRAIN CONTROL.");
-    Alert.alert("QR no valido", "Lectura recibida por el lector SE4710, pero ese QR no pertenece a XTRAVON ONE / GRAIN CONTROL.");
   }
 
   function onHardwareTextChange(text) {
@@ -1260,7 +1292,7 @@ export default function ScanScreen({ session, onNavigate }) {
     hardwareScanTimerRef.current = setTimeout(() => {
       const value = String(hardwareScanValue || text || "").trim().replace(/[\r\n]+/g, "");
       if (value) {
-        procesarLecturaHardware(value, "SE4710 teclado");
+        procesarLecturaHardware(value, "SE4710 teclado").catch(() => {});
       }
     }, hasEnter ? 20 : 220);
   }
@@ -1271,12 +1303,19 @@ export default function ScanScreen({ session, onNavigate }) {
       return;
     }
     const ok = configurarPerfilDataWedge();
+    setUsarCamaraRespaldo(false);
     setDataWedgeStatus(
       ok
         ? "Lector SE4710 listo. Presione el boton fisico amarillo para leer."
         : "No se detecto DataWedge nativo. Si el Zebra esta en modo teclado, mantenga esta pantalla activa y presione el boton fisico."
     );
-    setTimeout(() => hardwareInputRef.current?.focus?.(), 200);
+    setTimeout(() => {
+      try {
+        hardwareInputRef.current?.focus?.();
+      } catch (_error) {
+        // Fallback visual sin cerrar la app.
+      }
+    }, 200);
   }
 
   function dispararLecturaZebra() {
@@ -1287,6 +1326,13 @@ export default function ScanScreen({ session, onNavigate }) {
     const ok = enviarComandoDataWedge("com.symbol.datawedge.api.SOFT_SCAN_TRIGGER", "TOGGLE_SCANNING");
     if (!ok) {
       setDataWedgeStatus("Disparo nativo no disponible. Use el boton fisico amarillo o camara de respaldo.");
+      try {
+        hardwareInputRef.current?.focus?.();
+      } catch (_error) {
+        // Sin foco disponible.
+      }
+    } else {
+      setDataWedgeStatus("SE4710 escuchando. Apunte al QR y presione el gatillo amarillo.");
     }
   }
 
@@ -1673,7 +1719,7 @@ export default function ScanScreen({ session, onNavigate }) {
                   onSubmitEditing={() => {
                     const value = hardwareScanValue.trim();
                     if (value) {
-                      procesarLecturaHardware(value, "SE4710 teclado");
+                      procesarLecturaHardware(value, "SE4710 teclado").catch(() => {});
                     }
                   }}
                   autoCapitalize="none"
