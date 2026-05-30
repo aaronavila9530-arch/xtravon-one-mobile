@@ -98,28 +98,31 @@ function operationIdFromSession(session) {
 export default function GlobalPortia({ enabled = true, session, active }) {
   const [state, setState] = useState("DORMIDA");
   const [last, setLast] = useState("");
-  const enabledRef = useRef(enabled);
+  const [armed, setArmed] = useState(false);
+  const enabledRef = useRef(false);
+  const armedRef = useRef(false);
   const modeRef = useRef("idle");
   const activeRef = useRef(active);
   const commandTimerRef = useRef(null);
   const processingRef = useRef(false);
 
   useEffect(() => {
-    enabledRef.current = enabled;
+    armedRef.current = armed;
+    enabledRef.current = enabled && armed;
     activeRef.current = active;
-    if (enabled) {
+    if (enabled && armed) {
       startWakeLoop();
     } else {
       stopAll();
     }
     return () => {};
-  }, [enabled, active]);
+  }, [enabled, active, armed]);
 
   useEffect(() => {
     const sub = AppState.addEventListener("change", (next) => {
       if (next !== "active") {
         stopAll();
-      } else if (enabledRef.current) {
+      } else if (enabledRef.current && armedRef.current) {
         startWakeLoop();
       }
     });
@@ -177,7 +180,7 @@ export default function GlobalPortia({ enabled = true, session, active }) {
   });
 
   async function startWakeLoop() {
-    if (!enabledRef.current || modeRef.current === "wake" || processingRef.current) return;
+    if (!enabledRef.current || !armedRef.current || modeRef.current !== "idle" || processingRef.current) return;
     try {
       const permission = await ExpoSpeechRecognitionModule.requestPermissionsAsync();
       if (!permission.granted) {
@@ -199,7 +202,7 @@ export default function GlobalPortia({ enabled = true, session, active }) {
   }
 
   async function listenCommand() {
-    if (!enabledRef.current || processingRef.current) return;
+    if (!enabledRef.current || !armedRef.current || processingRef.current) return;
     try {
       await ExpoSpeechRecognitionModule.stop().catch(() => {});
       modeRef.current = "command";
@@ -218,7 +221,9 @@ export default function GlobalPortia({ enabled = true, session, active }) {
 
   function activate(initialCommand = "") {
     const ack = pickAck();
+    modeRef.current = "activating";
     setState("ACTIVA");
+    ExpoSpeechRecognitionModule.stop().catch(() => {});
     Speech.stop();
     Speech.speak(ack, {
       language: "es-ES",
@@ -297,21 +302,40 @@ export default function GlobalPortia({ enabled = true, session, active }) {
 
   function sleep() {
     clearTimeout(commandTimerRef.current);
+    setArmed(false);
+    armedRef.current = false;
+    enabledRef.current = false;
+    modeRef.current = "idle";
+    ExpoSpeechRecognitionModule.stop().catch(() => {});
     Speech.stop();
     Speech.speak("Entendido. Quedo en espera.", {
       language: "es-ES",
       rate: 0.98,
-      onDone: () => startWakeLoop()
+      onDone: () => setState("PAUSADA")
     });
-    setState("DORMIDA");
+    setState("PAUSADA");
   }
 
   if (!enabled || !session) return null;
 
   return (
-    <Pressable style={styles.floating} onPress={() => activate()}>
+    <Pressable
+      style={styles.floating}
+      onPress={() => {
+        if (!armed) {
+          armedRef.current = true;
+          enabledRef.current = true;
+          modeRef.current = "activating";
+          setArmed(true);
+          setState("ACTIVA");
+          setTimeout(() => activate(), 120);
+          return;
+        }
+        activate();
+      }}
+    >
       <Text style={styles.title}>P.O.R.T.I.A</Text>
-      <Text style={styles.status}>{state}</Text>
+      <Text style={styles.status}>{armed ? state : "TOCAR PARA ACTIVAR"}</Text>
       {!!last && <Text style={styles.last} numberOfLines={1}>{last}</Text>}
     </Pressable>
   );

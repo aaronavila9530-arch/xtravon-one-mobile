@@ -217,7 +217,11 @@ export default function App() {
           </ScreenErrorBoundary>
         </View>
       </View>
-      <GlobalPortia enabled={active !== "ai"} session={session} active={active} />
+      <GlobalPortia
+        enabled={active !== "ai" && !isPatioOperatorSession(session)}
+        session={session}
+        active={active}
+      />
     </SafeAreaView>
   );
 }
