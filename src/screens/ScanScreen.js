@@ -56,6 +56,20 @@ const DATAWEDGE_PROFILE = "XTRAVON_ONE_PATIO";
 const DATAWEDGE_ACTION = "com.xtravon.scan.ACTION";
 const DATAWEDGE_CATEGORY = "android.intent.category.DEFAULT";
 const DATAWEDGE_PACKAGE = ANDROID_PACKAGE;
+const DATAWEDGE_ACTIONS = [
+  DATAWEDGE_ACTION,
+  "com.xtravon.one.SCAN",
+  "com.xtravon.one.handheld.SCAN",
+  "com.erpelsurco.mobile.SCAN",
+  "com.symbol.datawedge.api.RESULT_ACTION"
+];
+const DATAWEDGE_PACKAGES = [
+  DATAWEDGE_PACKAGE,
+  "com.xtravon.one.handheld",
+  "com.xtravon.one.celular",
+  "com.xtravon.one",
+  "com.erpelsurco.mobile"
+];
 
 function utf8Bytes(value) {
   const input = String(value || "");
@@ -190,7 +204,7 @@ function configurarPerfilDataWedge() {
 
   try {
   dw.registerBroadcastReceiver({
-    filterActions: [DATAWEDGE_ACTION, "com.symbol.datawedge.api.RESULT_ACTION"],
+    filterActions: DATAWEDGE_ACTIONS,
     filterCategories: [DATAWEDGE_CATEGORY]
   });
   } catch (_error) {
@@ -204,12 +218,10 @@ function configurarPerfilDataWedge() {
       PROFILE_NAME: DATAWEDGE_PROFILE,
       PROFILE_ENABLED: "true",
       CONFIG_MODE: "UPDATE",
-      APP_LIST: [
-        {
-          PACKAGE_NAME: DATAWEDGE_PACKAGE,
-          ACTIVITY_LIST: ["*"]
-        }
-      ],
+      APP_LIST: DATAWEDGE_PACKAGES.map((packageName) => ({
+        PACKAGE_NAME: packageName,
+        ACTIVITY_LIST: ["*"]
+      })),
       PLUGIN_CONFIG: [
         {
           PLUGIN_NAME: "BARCODE",
@@ -1322,8 +1334,8 @@ export default function ScanScreen({ session, onNavigate }) {
     if (!IS_HANDHELD) {
       setDataWedgeStatus("Disparo SE4710 disponible solo en build handheld.");
       return;
-    }
-    const ok = enviarComandoDataWedge("com.symbol.datawedge.api.SOFT_SCAN_TRIGGER", "TOGGLE_SCANNING");
+  }
+    const ok = enviarComandoDataWedge("com.symbol.datawedge.api.SOFT_SCAN_TRIGGER", "START_SCANNING");
     if (!ok) {
       setDataWedgeStatus("Disparo nativo no disponible. Use el boton fisico amarillo o camara de respaldo.");
       try {
@@ -1332,7 +1344,10 @@ export default function ScanScreen({ session, onNavigate }) {
         // Sin foco disponible.
       }
     } else {
-      setDataWedgeStatus("SE4710 escuchando. Apunte al QR y presione el gatillo amarillo.");
+      setDataWedgeStatus("SE4710 activado. Apunte al QR; si no lee, presione el gatillo amarillo.");
+      setTimeout(() => {
+        enviarComandoDataWedge("com.symbol.datawedge.api.SOFT_SCAN_TRIGGER", "STOP_SCANNING");
+      }, 6000);
     }
   }
 
