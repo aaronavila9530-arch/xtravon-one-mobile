@@ -198,6 +198,22 @@ function enviarComandoDataWedge(extraName, extraValue) {
   }
 }
 
+function dispararSoftScanDataWedge(accion = "START_SCANNING") {
+  const dw = getDataWedgeModule();
+  if (!dw) return false;
+  try {
+    const action = dw.ACTION_SOFTSCANTRIGGER || "com.symbol.datawedge.api.SOFT_SCAN_TRIGGER";
+    const value = accion === "STOP_SCANNING" ? (dw.STOP_SCANNING || "STOP_SCANNING") : (dw.START_SCANNING || "START_SCANNING");
+    if (typeof dw.sendIntent === "function") {
+      dw.sendIntent(action, value);
+      return true;
+    }
+  } catch (_error) {
+    // Si el metodo nativo no esta disponible, se intenta por broadcast.
+  }
+  return enviarComandoDataWedge("com.symbol.datawedge.api.SOFT_SCAN_TRIGGER", accion);
+}
+
 function configurarPerfilDataWedge() {
   const dw = getDataWedgeModule();
   if (!dw) return false;
@@ -246,7 +262,10 @@ function configurarPerfilDataWedge() {
           PLUGIN_NAME: "KEYSTROKE",
           RESET_CONFIG: "true",
           PARAM_LIST: {
-            keystroke_output_enabled: "false"
+            // Respaldo del SE4710: si el intent de DataWedge no llega, el lector
+            // escribe en el input oculto. La camara sigue apagada por defecto.
+            keystroke_output_enabled: "true",
+            keystroke_action_char: "10"
           }
         }
       ]
@@ -1358,7 +1377,7 @@ export default function ScanScreen({ session, onNavigate }) {
     setUsarCamaraRespaldo(false);
     setCameraReady(false);
     setCameraError("");
-    const ok = enviarComandoDataWedge("com.symbol.datawedge.api.SOFT_SCAN_TRIGGER", "START_SCANNING");
+    const ok = dispararSoftScanDataWedge("START_SCANNING");
     if (!ok) {
       setDataWedgeStatus("Disparo nativo no disponible. Use el boton fisico amarillo o camara de respaldo.");
       try {
@@ -1369,7 +1388,7 @@ export default function ScanScreen({ session, onNavigate }) {
     } else {
       setDataWedgeStatus("SE4710 activado. Apunte al QR; si no lee, presione el gatillo amarillo.");
       setTimeout(() => {
-        enviarComandoDataWedge("com.symbol.datawedge.api.SOFT_SCAN_TRIGGER", "STOP_SCANNING");
+        dispararSoftScanDataWedge("STOP_SCANNING");
       }, 6000);
     }
   }
