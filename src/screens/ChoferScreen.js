@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Alert, Image, ScrollView, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 import { api } from "../api/client";
 import { COLORS } from "../config";
@@ -25,20 +25,32 @@ export default function ChoferScreen({ session }) {
   const [loading, setLoading] = useState(false);
   const [showQr, setShowQr] = useState(false);
   const [working, setWorking] = useState(false);
+  const continuidadPromptRef = useRef(null);
+  const activeGuideRef = useRef(null);
+  const pollingRef = useRef(false);
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async (options = {}) => {
+    const { silent = false, preserveQr = false } = options || {};
+    if (!silent) {
+      setLoading(true);
+    }
     try {
       const payload = await api.getEstadoChofer({
         chofer: choferNombre(session),
         placa: choferPlaca(session)
       });
       setData(payload);
-      setShowQr(false);
+      if (!preserveQr) {
+        setShowQr(false);
+      }
     } catch (error) {
-      Alert.alert("Estado de chofer", error.message);
+      if (!silent) {
+        Alert.alert("Estado de chofer", error.message);
+      }
     } finally {
-      setLoading(false);
+      if (!silent) {
+        setLoading(false);
+      }
     }
   }, [session]);
 
@@ -50,7 +62,7 @@ export default function ChoferScreen({ session }) {
   const viajesArchivados = Array.isArray(data?.viajes_archivados) ? data.viajes_archivados : [];
   const qrSize = Math.min(Math.max(width - 76, 220), 310);
 
-  async function confirmarContinuar() {
+  async function confirmarContinuar(guiaObjetivo = guia) {
     Alert.alert(
       "Continuar operacion",
       "Se habilitara el siguiente QR asignado por despacho. Confirme que continuara con este viaje.",
@@ -65,7 +77,7 @@ export default function ChoferScreen({ session }) {
                 chofer: choferNombre(session),
                 placa: choferPlaca(session),
                 operacion_id: data?.operacion?.id,
-                base_operacion_id: guia?.id,
+                base_operacion_id: guiaObjetivo?.id,
                 continuar: true,
                 comentario: "Chofer confirma continuidad desde app."
               });
@@ -83,7 +95,7 @@ export default function ChoferScreen({ session }) {
     );
   }
 
-  async function noContinuar() {
+  async function noContinuar(guiaObjetivo = guia) {
     Alert.alert(
       "No continuar",
       "Esta accion avisara al ERP que no continuara. Las guias pendientes quedaran en despacho para reasignacion manual.",
@@ -99,7 +111,7 @@ export default function ChoferScreen({ session }) {
                 chofer: choferNombre(session),
                 placa: choferPlaca(session),
                 operacion_id: data?.operacion?.id,
-                base_operacion_id: guia?.id,
+                base_operacion_id: guiaObjetivo?.id,
                 continuar: false,
                 comentario: "Chofer no continua desde app."
               });
@@ -135,6 +147,80 @@ export default function ChoferScreen({ session }) {
     }
   }
 
+  function preguntarContinuidadGuiaActiva(guiaObjetivo) {
+    if (!guiaObjetivo?.id || working) return;
+    const key = `activa-${guiaObjetivo.id}`;
+    if (continuidadPromptRef.current === key) return;
+    continuidadPromptRef.current = key;
+    setShowQr(false);
+    const timer = setTimeout(() => {
+      Alert.alert(
+        "Viaje completado",
+        `El QR anterior fue cerrado. Tiene una nueva guia para ${guiaObjetivo.empresa || "la operacion"} / ${guiaObjetivo.producto || "producto"}. Desea continuar?`,
+        [
+          {
+            text: "No continuar",
+            style: "destructive",
+            onPress: () => noContinuar(guiaObjetivo)
+          },
+          {
+            text: "Si, continuar",
+            onPress: () => {
+              activeGuideRef.current = guiaObjetivo.id;
+              setShowQr(true);
+            }
+          }
+        ]
+      );
+    }, 250);
+    return () => clearTimeout(timer);
+  }
+
+  useEffect(() => {
+    const pendiente = data?.guia_pendiente_confirmacion;
+    if (!pendiente?.id || working) return;
+    if (continuidadPromptRef.current === pendiente.id) return;
+    continuidadPromptRef.current = pendiente.id;
+    setShowQr(false);
+    const timer = setTimeout(() => {
+      Alert.alert(
+        "Siguiente viaje",
+        `Tiene una nueva guia disponible para ${pendiente.empresa || "la operacion"} / ${pendiente.producto || "producto"}. Desea continuar con la operacion?`,
+        [
+          { text: "No continuar", style: "destructive", onPress: () => noContinuar(pendiente) },
+          { text: "Si, continuar", onPress: () => confirmarContinuar(pendiente) }
+        ]
+      );
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [data?.guia_pendiente_confirmacion?.id, working]);
+
+  useEffect(() => {
+    const active = data?.guia_activa;
+    if (!active?.id || working) return;
+    if (!activeGuideRef.current) {
+      activeGuideRef.current = active.id;
+      return;
+    }
+    if (String(activeGuideRef.current) !== String(active.id)) {
+      preguntarContinuidadGuiaActiva(active);
+    }
+  }, [data?.guia_activa?.id, working]);
+
+  useEffect(() => {
+    if (!data?.guia_activa?.id || working) return undefined;
+    const timer = setInterval(async () => {
+      if (pollingRef.current) return;
+      pollingRef.current = true;
+      try {
+        await load({ silent: true, preserveQr: true });
+      } finally {
+        pollingRef.current = false;
+      }
+    }, 6000);
+    return () => clearInterval(timer);
+  }, [data?.guia_activa?.id, working, load]);
+
   return (
     <Screen
       title="Portal Chofer"
@@ -151,7 +237,7 @@ export default function ChoferScreen({ session }) {
           <Text style={styles.driverName}>{choferNombre(session)}</Text>
           <Text style={styles.driverMeta}>{data?.operacion?.nombre_buque || "Operacion no consultada"} {data?.operacion?.estado ? `| ${data.operacion.estado}` : ""}</Text>
           <View style={styles.searchAction}>
-            <Button label="Buscar mis guias" icon="search-outline" onPress={load} disabled={loading || working} />
+            <Button label="Buscar mis guias" icon="search-outline" onPress={() => load()} disabled={loading || working} />
           </View>
           {!data && (
             <View style={styles.searchPrompt}>
@@ -184,8 +270,16 @@ export default function ChoferScreen({ session }) {
                 : "Desea continuar con la operacion y habilitar este QR?"}
             </Text>
             <View style={styles.actions}>
-              <Button label={guiaEstaActiva ? "Mostrar QR" : "Si, continuar"} icon="checkmark-circle-outline" onPress={guiaEstaActiva ? () => setShowQr(true) : confirmarContinuar} disabled={working} />
-              <Button label="No continuo" icon="close-circle-outline" tone="danger" onPress={noContinuar} disabled={working} />
+              <Button
+                label={guiaEstaActiva ? "Mostrar QR" : "Si, continuar"}
+                icon="checkmark-circle-outline"
+                onPress={guiaEstaActiva ? () => {
+                  activeGuideRef.current = guia?.id || activeGuideRef.current;
+                  setShowQr(true);
+                } : () => confirmarContinuar()}
+                disabled={working}
+              />
+              <Button label="No continuo" icon="close-circle-outline" tone="danger" onPress={() => noContinuar()} disabled={working} />
             </View>
           </Card>
         ) : (
