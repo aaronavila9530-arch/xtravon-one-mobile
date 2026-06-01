@@ -280,49 +280,58 @@ function configurarPerfilDataWedge() {
   }
 
   enviarComandoDataWedge("com.symbol.datawedge.api.CREATE_PROFILE", DATAWEDGE_PROFILE);
-  enviarComandoDataWedge(
-    "com.symbol.datawedge.api.SET_CONFIG",
-    {
-      PROFILE_NAME: DATAWEDGE_PROFILE,
-      PROFILE_ENABLED: "true",
-      CONFIG_MODE: "UPDATE",
-      APP_LIST: DATAWEDGE_PACKAGES.map((packageName) => ({
-        PACKAGE_NAME: packageName,
-        ACTIVITY_LIST: ["*"]
-      })),
-      PLUGIN_CONFIG: [
-        {
-          PLUGIN_NAME: "BARCODE",
-          RESET_CONFIG: "true",
-          PARAM_LIST: {
-            scanner_input_enabled: "true",
-            scanner_selection: "auto",
-            decoder_qrcode: "true"
-          }
-        },
-        {
-          PLUGIN_NAME: "INTENT",
-          RESET_CONFIG: "true",
-          PARAM_LIST: {
-            intent_output_enabled: "true",
-            intent_action: DATAWEDGE_ACTION,
-            intent_category: DATAWEDGE_CATEGORY,
-            intent_delivery: "2"
-          }
-        },
-        {
-          PLUGIN_NAME: "KEYSTROKE",
-          RESET_CONFIG: "true",
-          PARAM_LIST: {
-            // Respaldo del SE4710: si el intent de DataWedge no llega, el lector
-            // escribe en el input oculto. La camara sigue apagada por defecto.
-            keystroke_output_enabled: "true",
-            keystroke_action_char: "10"
-          }
-        }
-      ]
+
+  const appList = DATAWEDGE_PACKAGES.map((packageName) => ({
+    PACKAGE_NAME: packageName,
+    ACTIVITY_LIST: ["*"]
+  }));
+
+  const baseConfig = {
+    PROFILE_NAME: DATAWEDGE_PROFILE,
+    PROFILE_ENABLED: "true",
+    CONFIG_MODE: "CREATE_IF_NOT_EXIST",
+    APP_LIST: appList
+  };
+
+  enviarComandoDataWedge("com.symbol.datawedge.api.SET_CONFIG", {
+    ...baseConfig,
+    PLUGIN_CONFIG: {
+      PLUGIN_NAME: "BARCODE",
+      RESET_CONFIG: "true",
+      PARAM_LIST: {
+        scanner_input_enabled: "true",
+        scanner_selection: "auto",
+        scanner_selection_by_identifier: "INTERNAL_IMAGER",
+        decoder_qrcode: "true"
+      }
     }
-  );
+  });
+
+  enviarComandoDataWedge("com.symbol.datawedge.api.SET_CONFIG", {
+    ...baseConfig,
+    PLUGIN_CONFIG: {
+      PLUGIN_NAME: "INTENT",
+      RESET_CONFIG: "true",
+      PARAM_LIST: {
+        intent_output_enabled: "true",
+        intent_action: DATAWEDGE_ACTION,
+        intent_category: DATAWEDGE_CATEGORY,
+        intent_delivery: "2"
+      }
+    }
+  });
+
+  enviarComandoDataWedge("com.symbol.datawedge.api.SET_CONFIG", {
+    ...baseConfig,
+    PLUGIN_CONFIG: {
+      PLUGIN_NAME: "KEYSTROKE",
+      RESET_CONFIG: "false",
+      PARAM_LIST: {
+        keystroke_output_enabled: "true",
+        keystroke_action_char: "10"
+      }
+    }
+  });
   enviarComandoDataWedge("com.symbol.datawedge.api.SWITCH_TO_PROFILE", DATAWEDGE_PROFILE);
   return true;
 }
@@ -1967,6 +1976,11 @@ export default function ScanScreen({ session, onNavigate }) {
                   ref={hardwareInputRef}
                   value={hardwareScanValue}
                   onChangeText={onHardwareTextChange}
+                  onFocus={() => {
+                    if (USE_HARDWARE_SCANNER) {
+                      setDataWedgeStatus((current) => current || "Entrada SE4710 enfocada. Presione el gatillo amarillo.");
+                    }
+                  }}
                   onSubmitEditing={() => {
                     const value = hardwareScanValue.trim();
                     if (value) {
@@ -1975,6 +1989,7 @@ export default function ScanScreen({ session, onNavigate }) {
                   }}
                   autoCapitalize="none"
                   autoCorrect={false}
+                  autoFocus
                   blurOnSubmit={false}
                   showSoftInputOnFocus={false}
                   placeholder="Entrada SE4710/DataWedge"
