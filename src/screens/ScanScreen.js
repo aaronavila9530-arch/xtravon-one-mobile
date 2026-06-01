@@ -173,11 +173,49 @@ function extraerCampoDataWedge(intent, key) {
   return intent?.[key] ?? intent?.extras?.[key] ?? intent?.intentExtras?.[key] ?? "";
 }
 
+function buscarCampoDataWedgeRecursivo(value, wantedKeys = []) {
+  if (!value || typeof value !== "object") return "";
+  const wanted = wantedKeys.map((key) => String(key).toLowerCase());
+  const visited = new Set();
+
+  function walk(node) {
+    if (!node || typeof node !== "object" || visited.has(node)) return "";
+    visited.add(node);
+    for (const [key, entry] of Object.entries(node)) {
+      const normalized = String(key).toLowerCase();
+      if (wanted.some((wantedKey) => normalized === wantedKey || normalized.endsWith(`.${wantedKey}`))) {
+        if (entry !== null && entry !== undefined && typeof entry !== "object") {
+          return String(entry);
+        }
+      }
+    }
+    for (const entry of Object.values(node)) {
+      const found = walk(entry);
+      if (found) return found;
+    }
+    return "";
+  }
+
+  return walk(value);
+}
+
 function extraerLecturaDataWedge(intent) {
   if (!intent) return null;
   const data =
     extraerCampoDataWedge(intent, "com.symbol.datawedge.data_string") ||
     extraerCampoDataWedge(intent, "data_string") ||
+    extraerCampoDataWedge(intent, "decodedData") ||
+    extraerCampoDataWedge(intent, "decoded_data") ||
+    extraerCampoDataWedge(intent, "barcode") ||
+    extraerCampoDataWedge(intent, "text") ||
+    buscarCampoDataWedgeRecursivo(intent, [
+      "com.symbol.datawedge.data_string",
+      "data_string",
+      "decodedData",
+      "decoded_data",
+      "barcode",
+      "text"
+    ]) ||
     intent.data ||
     "";
   if (!data) return null;
@@ -1327,7 +1365,34 @@ export default function ScanScreen({ session, onNavigate }) {
 
     const match = raw.match(/qr\/(\d+)/) || raw.match(/registro[_-]?id[=:]\s*(\d+)/i) || raw.match(/^(\d+)$/);
     if (match) return { id: String(match[1]), token: "", raw };
+    const guiaMatch = raw.match(/\b([A-Z]{1,6}[- ]?\d{3,8}|\d{4,10})\b/i);
+    if (guiaMatch) return { id: String(guiaMatch[1]).replace(/\s+/g, "-"), token: "", raw, isGuia: true };
     return null;
+  }
+
+  async function abrirGuiaPorTextoLibre(value, token = "") {
+    const cleanValue = String(value || "").trim();
+    if (!cleanValue) return null;
+
+    const cached = await buscarGuiaEnCache(cleanValue, token);
+    if (cached.guia) {
+      cargarBoletaEnCaptura(cached.guia, token, true, {
+        registro_id: Number(cached.guia.id || 0),
+        offline_signature: cached.guia.offline_signature || "",
+        offline_token_digest: cached.guia.offline_token_digest || "",
+        capturado_en: new Date().toISOString()
+      });
+      setQrError("Guia abierta desde memoria local.");
+      return cached.guia;
+    }
+
+    const data = await api.getBoletas({ guia: cleanValue });
+    const rows = Array.isArray(data) ? data : [];
+    const exact = rows.find((item) => String(item.guia || "").trim().toUpperCase() === cleanValue.toUpperCase()) || rows[0];
+    if (!exact?.id) return null;
+    cargarBoletaEnCaptura(exact, token, false, null);
+    await actualizarGuiaEnCache(exact);
+    return exact;
   }
 
   async function procesarLecturaHardware(rawValue, source = "SE4710") {
@@ -1348,7 +1413,17 @@ export default function ScanScreen({ session, onNavigate }) {
 
       const parsed = extraerDatosQr(value);
       if (parsed?.id) {
-        await loadBoleta(parsed.id, parsed.token, parsed.raw);
+        if (parsed.isGuia) {
+          const opened = await abrirGuiaPorTextoLibre(parsed.id, parsed.token);
+          if (opened) return;
+        } else {
+          await loadBoleta(parsed.id, parsed.token, parsed.raw);
+          return;
+        }
+      }
+
+      const opened = await abrirGuiaPorTextoLibre(value, "");
+      if (opened) {
         return;
       }
 
@@ -1382,11 +1457,11 @@ export default function ScanScreen({ session, onNavigate }) {
 
     const hasEnter = /[\r\n]/.test(text);
     hardwareScanTimerRef.current = setTimeout(() => {
-      const value = String(hardwareScanValue || text || "").trim().replace(/[\r\n]+/g, "");
+      const value = String(text || hardwareScanValue || "").trim().replace(/[\r\n]+/g, "");
       if (value) {
         procesarLecturaHardware(value, "SE4710 teclado").catch(() => {});
       }
-    }, hasEnter ? 20 : 220);
+    }, hasEnter ? 40 : 650);
   }
 
   function activarPerfilZebra() {
