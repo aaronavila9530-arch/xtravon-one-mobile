@@ -70,13 +70,6 @@ const DATAWEDGE_ACTIONS = [
   "com.erpelsurco.mobile.SCAN",
   "com.symbol.datawedge.api.RESULT_ACTION"
 ];
-const DATAWEDGE_PACKAGES = [
-  DATAWEDGE_PACKAGE,
-  "com.xtravon.one.handheld",
-  "com.xtravon.one.celular",
-  "com.xtravon.one",
-  "com.erpelsurco.mobile"
-];
 
 function utf8Bytes(value) {
   const input = String(value || "");
@@ -250,22 +243,6 @@ function enviarComandoDataWedge(extraName, extraValue) {
   }
 }
 
-function dispararSoftScanDataWedge(accion = "START_SCANNING") {
-  const dw = getDataWedgeModule();
-  if (!dw) return false;
-  try {
-    const action = dw.ACTION_SOFTSCANTRIGGER || "com.symbol.datawedge.api.SOFT_SCAN_TRIGGER";
-    const value = accion === "STOP_SCANNING" ? (dw.STOP_SCANNING || "STOP_SCANNING") : (dw.START_SCANNING || "START_SCANNING");
-    if (typeof dw.sendIntent === "function") {
-      dw.sendIntent(action, value);
-      return true;
-    }
-  } catch (_error) {
-    // Si el metodo nativo no esta disponible, se intenta por broadcast.
-  }
-  return enviarComandoDataWedge("com.symbol.datawedge.api.SOFT_SCAN_TRIGGER", accion);
-}
-
 function configurarPerfilDataWedge() {
   const dw = getDataWedgeModule();
   if (!dw) return false;
@@ -281,7 +258,8 @@ function configurarPerfilDataWedge() {
 
   enviarComandoDataWedge("com.symbol.datawedge.api.CREATE_PROFILE", DATAWEDGE_PROFILE);
 
-  const appList = DATAWEDGE_PACKAGES.map((packageName) => ({
+  const appPackages = Array.from(new Set([DATAWEDGE_PACKAGE, ANDROID_PACKAGE].filter(Boolean)));
+  const appList = appPackages.map((packageName) => ({
     PACKAGE_NAME: packageName,
     ACTIVITY_LIST: ["*"]
   }));
@@ -289,7 +267,7 @@ function configurarPerfilDataWedge() {
   const baseConfig = {
     PROFILE_NAME: DATAWEDGE_PROFILE,
     PROFILE_ENABLED: "true",
-    CONFIG_MODE: "CREATE_IF_NOT_EXIST",
+    CONFIG_MODE: "UPDATE",
     APP_LIST: appList
   };
 
@@ -301,7 +279,6 @@ function configurarPerfilDataWedge() {
       PARAM_LIST: {
         scanner_input_enabled: "true",
         scanner_selection: "auto",
-        scanner_selection_by_identifier: "INTERNAL_IMAGER",
         decoder_qrcode: "true"
       }
     }
@@ -325,7 +302,7 @@ function configurarPerfilDataWedge() {
     ...baseConfig,
     PLUGIN_CONFIG: {
       PLUGIN_NAME: "KEYSTROKE",
-      RESET_CONFIG: "false",
+      RESET_CONFIG: "true",
       PARAM_LIST: {
         keystroke_output_enabled: "true",
         keystroke_action_char: "10"
@@ -517,7 +494,7 @@ export default function ScanScreen({ session, onNavigate }) {
     const dwReady = configurarPerfilDataWedge();
     setDataWedgeStatus(
       dwReady
-        ? "Lector SE4710 listo. Use el boton fisico amarillo del Zebra TC26."
+        ? "Lector SE4710 listo. Presione el gatillo amarillo para leer."
         : "DataWedge nativo no disponible. Use modo teclado SE4710 o camara de respaldo."
     );
 
@@ -537,11 +514,20 @@ export default function ScanScreen({ session, onNavigate }) {
     const subBroadcast = DeviceEventEmitter.addListener("datawedge_broadcast_intent", handler);
     const subBarcode = DeviceEventEmitter.addListener("barcode_scan", handler);
     const focusTimer = setTimeout(() => hardwareInputRef.current?.focus?.(), 450);
+    const profileTimer = setInterval(() => {
+      configurarPerfilDataWedge();
+      try {
+        hardwareInputRef.current?.focus?.();
+      } catch (_error) {
+        // No bloquear patio por foco auxiliar.
+      }
+    }, 8000);
 
     return () => {
       subBroadcast?.remove?.();
       subBarcode?.remove?.();
       clearTimeout(focusTimer);
+      clearInterval(profileTimer);
       if (hardwareScanTimerRef.current) {
         clearTimeout(hardwareScanTimerRef.current);
       }
@@ -607,6 +593,14 @@ export default function ScanScreen({ session, onNavigate }) {
       if (state === "active" && isOperator && usarCamaraRespaldo) {
         setCameraReady(false);
         setScannerSession((value) => value + 1);
+      }
+      if (state === "active" && isOperator && USE_HARDWARE_SCANNER && Platform.OS === "android") {
+        configurarPerfilDataWedge();
+        try {
+          hardwareInputRef.current?.focus?.();
+        } catch (_error) {
+          // El lector SE4710 debe quedar listo al volver a primer plano.
+        }
       }
     });
     return () => sub.remove();
@@ -1543,51 +1537,6 @@ export default function ScanScreen({ session, onNavigate }) {
     }, hasEnter ? 40 : 650);
   }
 
-  function activarPerfilZebra() {
-    if (!USE_HARDWARE_SCANNER) {
-      setDataWedgeStatus("SE4710 no detectado en este dispositivo. Use camara manual en esta version.");
-      return;
-    }
-    const ok = configurarPerfilDataWedge();
-    setUsarCamaraRespaldo(false);
-    setDataWedgeStatus(
-      ok
-        ? "Lector SE4710 listo. Presione el boton fisico amarillo para leer."
-        : "No se detecto DataWedge nativo. Si el Zebra esta en modo teclado, mantenga esta pantalla activa y presione el boton fisico."
-    );
-    setTimeout(() => {
-      try {
-        hardwareInputRef.current?.focus?.();
-      } catch (_error) {
-        // Fallback visual sin cerrar la app.
-      }
-    }, 200);
-  }
-
-  function dispararLecturaZebra() {
-    if (!USE_HARDWARE_SCANNER) {
-      setDataWedgeStatus("Disparo SE4710 no detectado en este dispositivo.");
-      return;
-    }
-    setUsarCamaraRespaldo(false);
-    setCameraReady(false);
-    setCameraError("");
-    const ok = dispararSoftScanDataWedge("START_SCANNING");
-    if (!ok) {
-      setDataWedgeStatus("Disparo nativo no disponible. Use el boton fisico amarillo o camara de respaldo.");
-      try {
-        hardwareInputRef.current?.focus?.();
-      } catch (_error) {
-        // Sin foco disponible.
-      }
-    } else {
-      setDataWedgeStatus("SE4710 activado. Apunte al QR; si no lee, presione el gatillo amarillo.");
-      setTimeout(() => {
-        dispararSoftScanDataWedge("STOP_SCANNING");
-      }, 6000);
-    }
-  }
-
   async function onBarcodeScanned({ data }) {
     if (scanned) return;
     setScanned(true);
@@ -1961,8 +1910,6 @@ export default function ScanScreen({ session, onNavigate }) {
             <View style={styles.operatorActions}>
               <Button label="Sincronizar operacion" icon="cloud-download-outline" onPress={sincronizarDatosOperacion} />
               <Button label="Abrir SOF" icon="list-outline" tone="info" onPress={() => onNavigate?.("statement")} />
-              {USE_HARDWARE_SCANNER && <Button label="Activar Zebra" icon="barcode-outline" tone="info" onPress={activarPerfilZebra} />}
-              {USE_HARDWARE_SCANNER && <Button label="Escanear" icon="scan-outline" tone="info" onPress={dispararLecturaZebra} />}
               <Button label="Reactivar lectura" icon="refresh-outline" tone="info" onPress={reactivarScanner} />
             </View>
             <Card style={styles.handheldStatus}>
