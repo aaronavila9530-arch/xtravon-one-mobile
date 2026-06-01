@@ -731,6 +731,28 @@ export default function ScanScreen({ session, onNavigate }) {
     await guardarGuiasOffline(nextCache);
   }
 
+  function cargarBoletaEnCaptura(nextBoleta, token = "", offline = false, offlineAuth = null) {
+    if (!nextBoleta) return;
+    setBoleta(nextBoleta);
+    setSelectedId(nextBoleta?.id || nextBoleta?.registro_id || "");
+    setQrToken(offlineAuth?.offline_signature ? "" : token);
+    setFicha(nextBoleta?.ficha || "");
+    setPesoVacio(nextBoleta?.peso_vacio ? String(nextBoleta.peso_vacio) : "");
+    setNumeroTolva(nextBoleta?.numero_tolva || "");
+    cargarMarchamosDesdeTexto(
+      nextBoleta?.marchamos_lista?.length
+        ? nextBoleta.marchamos_lista.join(", ")
+        : nextBoleta?.marchamos || ""
+    );
+    setPesoLleno(nextBoleta?.peso_lleno ? String(nextBoleta.peso_lleno) : "");
+    setComentarioIssueLog(nextBoleta?.comentario_issue_log || "");
+    setOfflineMode(Boolean(offline));
+    setOfflineQr(offlineAuth || null);
+    if (isOperator) {
+      setCaptureOpen(true);
+    }
+  }
+
   async function obtenerDeviceId() {
     if (!DEVICE_ID_FILE) return `handheld-${Math.random().toString(36).slice(2, 10)}`;
     try {
@@ -1166,45 +1188,43 @@ export default function ScanScreen({ session, onNavigate }) {
     setQrError("");
     setOfflineQr(null);
     setOfflineMode(false);
+    let openedFromCache = false;
+    let openedCacheGuia = null;
     try {
-      const data = token ? await api.validarQr(id, token) : await api.getBoleta(id);
-      setBoleta(data);
-      setSelectedId(data?.id || id);
-      setQrToken(token);
-      setFicha(data?.ficha || "");
-      setPesoVacio(data?.peso_vacio ? String(data.peso_vacio) : "");
-      setNumeroTolva(data?.numero_tolva || "");
-      cargarMarchamosDesdeTexto(data?.marchamos_lista?.length ? data.marchamos_lista.join(", ") : data?.marchamos || "");
-      setPesoLleno(data?.peso_lleno ? String(data.peso_lleno) : "");
-      setComentarioIssueLog(data?.comentario_issue_log || "");
-      await actualizarGuiaEnCache(data);
       if (isOperator) {
-        setCaptureOpen(true);
-      }
-      return data;
-    } catch (error) {
-      if (esErrorReintentable(error)) {
         const cached = await buscarGuiaEnCache(id, token);
         if (cached.guia) {
-          setBoleta(cached.guia);
-          setSelectedId(cached.guia.id || id);
-          setQrToken(cached.guia.offline_signature ? "" : token);
-          setFicha(cached.guia.ficha || "");
-          setPesoVacio(cached.guia.peso_vacio ? String(cached.guia.peso_vacio) : "");
-          setNumeroTolva(cached.guia.numero_tolva || "");
-          cargarMarchamosDesdeTexto(cached.guia.marchamos_lista?.length ? cached.guia.marchamos_lista.join(", ") : cached.guia.marchamos || "");
-          setPesoLleno(cached.guia.peso_lleno ? String(cached.guia.peso_lleno) : "");
-          setComentarioIssueLog(cached.guia.comentario_issue_log || "");
-          setOfflineMode(true);
-          setOfflineQr({
+          openedFromCache = true;
+          openedCacheGuia = cached.guia;
+          cargarBoletaEnCaptura(cached.guia, token, false, {
             registro_id: Number(id),
             offline_signature: cached.guia.offline_signature || "",
             offline_token_digest: cached.guia.offline_token_digest || "",
             capturado_en: new Date().toISOString()
           });
-          if (isOperator) {
-            setCaptureOpen(true);
-          }
+        }
+      }
+
+      const data = token ? await api.validarQr(id, token) : await api.getBoleta(id);
+      cargarBoletaEnCaptura(data, token, false, null);
+      await actualizarGuiaEnCache(data);
+      return data;
+    } catch (error) {
+      if (openedFromCache) {
+        setOfflineMode(true);
+        setQrError("Modo protegido: guia abierta desde memoria local. Puede guardar; se sincronizara al volver la conexion estable.");
+        return openedCacheGuia;
+      }
+      if (esErrorReintentable(error)) {
+        const cached = await buscarGuiaEnCache(id, token);
+        if (cached.guia) {
+          const offlineAuth = {
+            registro_id: Number(id),
+            offline_signature: cached.guia.offline_signature || "",
+            offline_token_digest: cached.guia.offline_token_digest || "",
+            capturado_en: new Date().toISOString()
+          };
+          cargarBoletaEnCaptura(cached.guia, token, true, offlineAuth);
           setQrError("Modo offline: guia encontrada en memoria local. Puede llenar datos y guardar; se enviaran al volver la red.");
           return cached.guia;
         }
