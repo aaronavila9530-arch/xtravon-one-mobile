@@ -19,6 +19,40 @@ function choferPlaca(session) {
   return session?.placa || "";
 }
 
+function textoMayus(value) {
+  return String(value || "").trim().toUpperCase();
+}
+
+function guiaCerrada(guia) {
+  if (!guia) return false;
+  const estado = textoMayus(guia.estado);
+  const estadoAsignacion = textoMayus(guia.estado_asignacion);
+  const lecturas = Number(guia.lecturas || 0);
+  return (
+    lecturas >= 3 ||
+    estado === "COMPLETA" ||
+    estadoAsignacion === "COMPLETA" ||
+    estadoAsignacion === "FINALIZADO" ||
+    guia.qr_bloqueado === true ||
+    guia.qr_activo === false
+  );
+}
+
+function guiaListaParaConfirmar(guia) {
+  if (!guia || guiaCerrada(guia)) return false;
+  return textoMayus(guia.estado_asignacion) === "RESERVADA";
+}
+
+function guiaListaParaMostrarQr(guia) {
+  if (!guia || guiaCerrada(guia)) return false;
+  const estadoAsignacion = textoMayus(guia.estado_asignacion);
+  return (
+    guia.qr_activo === true &&
+    !!guia.qr_image_url &&
+    ["ASIGNADA", "EN_PUERTO", "CARGADO"].includes(estadoAsignacion)
+  );
+}
+
 export default function ChoferScreen({ session }) {
   const { width } = useWindowDimensions();
   const [data, setData] = useState(null);
@@ -54,9 +88,13 @@ export default function ChoferScreen({ session }) {
     }
   }, [session]);
 
-  const guia = data?.guia_activa || data?.guia_pendiente_confirmacion;
-  const guiaEstaActiva = !!data?.guia_activa;
-  const tieneQr = guiaEstaActiva && !!guia?.qr_image_url;
+  const guiaActivaValida = guiaListaParaMostrarQr(data?.guia_activa) ? data.guia_activa : null;
+  const guiaPendienteConfirmacion = guiaListaParaConfirmar(data?.guia_pendiente_confirmacion)
+    ? data.guia_pendiente_confirmacion
+    : null;
+  const guia = guiaActivaValida || guiaPendienteConfirmacion;
+  const guiaEstaActiva = !!guiaActivaValida;
+  const tieneQr = !!guiaActivaValida?.qr_image_url;
   const resumenChofer = data?.resumen_chofer || {};
   const viajesAsignados = Array.isArray(data?.viajes_asignados) ? data.viajes_asignados : [];
   const viajesArchivados = Array.isArray(data?.viajes_archivados) ? data.viajes_archivados : [];
@@ -177,7 +215,7 @@ export default function ChoferScreen({ session }) {
   }
 
   useEffect(() => {
-    const pendiente = data?.guia_pendiente_confirmacion;
+    const pendiente = guiaPendienteConfirmacion;
     if (!pendiente?.id || working) return;
     if (continuidadPromptRef.current === pendiente.id) return;
     continuidadPromptRef.current = pendiente.id;
@@ -193,10 +231,10 @@ export default function ChoferScreen({ session }) {
       );
     }, 300);
     return () => clearTimeout(timer);
-  }, [data?.guia_pendiente_confirmacion?.id, working]);
+  }, [guiaPendienteConfirmacion?.id, working]);
 
   useEffect(() => {
-    const active = data?.guia_activa;
+    const active = guiaActivaValida;
     if (!active?.id || working) return;
     if (!activeGuideRef.current) {
       activeGuideRef.current = active.id;
@@ -205,10 +243,10 @@ export default function ChoferScreen({ session }) {
     if (String(activeGuideRef.current) !== String(active.id)) {
       preguntarContinuidadGuiaActiva(active);
     }
-  }, [data?.guia_activa?.id, working]);
+  }, [guiaActivaValida?.id, working]);
 
   useEffect(() => {
-    if (!data?.guia_activa?.id || working) return undefined;
+    if (!guiaActivaValida?.id || working) return undefined;
     const timer = setInterval(async () => {
       if (pollingRef.current) return;
       pollingRef.current = true;
@@ -219,7 +257,7 @@ export default function ChoferScreen({ session }) {
       }
     }, 6000);
     return () => clearInterval(timer);
-  }, [data?.guia_activa?.id, working, load]);
+  }, [guiaActivaValida?.id, working, load]);
 
   return (
     <Screen
