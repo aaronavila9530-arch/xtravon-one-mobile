@@ -6,6 +6,13 @@ import { api } from "../api/client";
 import { Button, Card, EmptyState, Loading, Row, Screen } from "../components/ui";
 import { ANDROID_PACKAGE, COLORS, IS_HANDHELD } from "../config";
 
+const PLATFORM_DEVICE_TEXT = Object.values(Platform.constants || {})
+  .map((value) => String(value || ""))
+  .join(" ")
+  .toUpperCase();
+const IS_ZEBRA_DEVICE = Platform.OS === "android" && /ZEBRA|TC26|TC2|SE4710|MOTOROLA SOLUTIONS/.test(PLATFORM_DEVICE_TEXT);
+const USE_HARDWARE_SCANNER = IS_HANDHELD || IS_ZEBRA_DEVICE;
+
 const TABLE_COLUMNS = [
   ["id", "ID", 54],
   ["guia", "Guia", 88],
@@ -153,7 +160,7 @@ function sanitizarGuiaOffline(guia = {}) {
 }
 
 function getDataWedgeModule() {
-  if (!IS_HANDHELD) return null;
+  if (!USE_HARDWARE_SCANNER) return null;
   if (Platform.OS !== "android") return null;
   try {
     return require("react-native-datawedge-intents");
@@ -329,9 +336,9 @@ export default function ScanScreen({ session, onNavigate }) {
   const [syncingQueue, setSyncingQueue] = useState(false);
   const [syncMessage, setSyncMessage] = useState("");
   const [captureOpen, setCaptureOpen] = useState(false);
-  const [usarCamaraRespaldo, setUsarCamaraRespaldo] = useState(() => !IS_HANDHELD);
+  const [usarCamaraRespaldo, setUsarCamaraRespaldo] = useState(false);
   const [dataWedgeStatus, setDataWedgeStatus] = useState(
-    IS_HANDHELD
+    USE_HARDWARE_SCANNER
       ? "Lector SE4710 pendiente de inicializar."
       : "Modo celular: camara activa como lector principal."
   );
@@ -342,6 +349,12 @@ export default function ScanScreen({ session, onNavigate }) {
   const hardwareScanTimerRef = useRef(null);
   const lastHardwareScanRef = useRef({ value: "", at: 0 });
   const isOperator = isPatioOperatorSession(session);
+
+  useEffect(() => {
+    if (isOperator) {
+      setUsarCamaraRespaldo(false);
+    }
+  }, [isOperator]);
 
   const totalPages = Math.max(1, Math.ceil(boletas.length / PAGE_SIZE));
   const visibleBoletas = useMemo(
@@ -440,9 +453,9 @@ export default function ScanScreen({ session, onNavigate }) {
   }, []);
 
   useEffect(() => {
-    if (!isOperator || !IS_HANDHELD || Platform.OS !== "android") {
-      if (isOperator && !IS_HANDHELD) {
-        setDataWedgeStatus("Modo celular: Zebra/DataWedge desactivado. La camara es el lector principal.");
+    if (!isOperator || !USE_HARDWARE_SCANNER || Platform.OS !== "android") {
+      if (isOperator && !USE_HARDWARE_SCANNER) {
+        setDataWedgeStatus("Modo celular: use el boton de camara solo como lector manual.");
       }
       return undefined;
     }
@@ -482,7 +495,7 @@ export default function ScanScreen({ session, onNavigate }) {
   }, [isOperator]);
 
   useEffect(() => {
-    if (isOperator && IS_HANDHELD) {
+    if (isOperator && USE_HARDWARE_SCANNER) {
       setUsarCamaraRespaldo(false);
       setCameraReady(false);
       setCameraError("");
@@ -497,7 +510,7 @@ export default function ScanScreen({ session, onNavigate }) {
   }, [isOperator]);
 
   useEffect(() => {
-    if (!isOperator || !IS_HANDHELD || Platform.OS !== "android" || usarCamaraRespaldo) {
+    if (!isOperator || !USE_HARDWARE_SCANNER || Platform.OS !== "android" || usarCamaraRespaldo) {
       return undefined;
     }
     setUsarCamaraRespaldo(false);
@@ -646,7 +659,7 @@ export default function ScanScreen({ session, onNavigate }) {
   function guiaOperableOffline(guia) {
     const estadoAsignacion = String(guia?.estado_asignacion || "").toUpperCase();
     const lecturas = Number(guia?.lecturas || 0);
-    if (!["ASIGNADA", "EN_PUERTO", "CARGADO"].includes(estadoAsignacion)) {
+    if (!["RESERVADA", "ASIGNADA", "EN_PUERTO", "CARGADO"].includes(estadoAsignacion)) {
       return false;
     }
     if (guia?.qr_activo === false) return false;
@@ -935,9 +948,17 @@ export default function ScanScreen({ session, onNavigate }) {
           actualizado_en: cache.actualizado_en
         });
         const cacheSinFirma = Boolean(cacheData?.politica?.cache_sin_firma);
+        const guiasOperables = rows.filter(guiaOperableOffline).length;
+        const guiasReservadas = rows.filter(
+          (item) => String(item?.estado_asignacion || "").toUpperCase() === "RESERVADA"
+        ).length;
         Alert.alert(
           cacheSinFirma ? "Cache descargado sin firma offline" : "Datos offline listos",
-          `${rows.length} guia(s) activas/asignadas y ${cache.choferes.length} chofer(es) descargados para ${cache.buque || "la operacion activa"}.\n\n${
+          `${guiasOperables} guia(s) operables offline, ${rows.length} guia(s) cacheadas y ${cache.choferes.length} chofer(es) descargados para ${cache.buque || "la operacion activa"}.${
+            guiasReservadas
+              ? `\n\n${guiasReservadas} guia(s) estan reservadas y solo se activan cuando despacho/chofer confirma continuidad.`
+              : ""
+          }\n\n${
             cacheSinFirma
               ? "Railway no tiene QR_SECRET valido. La operacion online puede consultar datos, pero el modo offline seguro no quedara habilitado hasta configurar QR_SECRET y regenerar QR."
               : "Si se cae la red, el handheld podra validar QR cacheados, abrir captura y guardar escaneos en memoria local."
@@ -1077,7 +1098,7 @@ export default function ScanScreen({ session, onNavigate }) {
     setCameraError("");
     setCameraReady(false);
     setHardwareScanValue("");
-    if (IS_HANDHELD) {
+    if (USE_HARDWARE_SCANNER) {
       setUsarCamaraRespaldo(false);
     }
     setScannerSession((value) => value + 1);
@@ -1167,7 +1188,7 @@ export default function ScanScreen({ session, onNavigate }) {
         if (cached.guia) {
           setBoleta(cached.guia);
           setSelectedId(cached.guia.id || id);
-          setQrToken("");
+          setQrToken(cached.guia.offline_signature ? "" : token);
           setFicha(cached.guia.ficha || "");
           setPesoVacio(cached.guia.peso_vacio ? String(cached.guia.peso_vacio) : "");
           setNumeroTolva(cached.guia.numero_tolva || "");
@@ -1318,7 +1339,7 @@ export default function ScanScreen({ session, onNavigate }) {
       setQrError(error?.message || "No se pudo procesar la lectura del SE4710.");
       setDataWedgeStatus(`SE4710 activo. Ultimo error controlado: ${error?.message || "lectura no procesada"}`);
     } finally {
-      if (IS_HANDHELD) {
+      if (USE_HARDWARE_SCANNER) {
         setTimeout(() => {
           try {
             hardwareInputRef.current?.focus?.();
@@ -1349,8 +1370,8 @@ export default function ScanScreen({ session, onNavigate }) {
   }
 
   function activarPerfilZebra() {
-    if (!IS_HANDHELD) {
-      setDataWedgeStatus("SE4710 disponible solo en build handheld. Use camara manual en esta version.");
+    if (!USE_HARDWARE_SCANNER) {
+      setDataWedgeStatus("SE4710 no detectado en este dispositivo. Use camara manual en esta version.");
       return;
     }
     const ok = configurarPerfilDataWedge();
@@ -1370,8 +1391,8 @@ export default function ScanScreen({ session, onNavigate }) {
   }
 
   function dispararLecturaZebra() {
-    if (!IS_HANDHELD) {
-      setDataWedgeStatus("Disparo SE4710 disponible solo en build handheld.");
+    if (!USE_HARDWARE_SCANNER) {
+      setDataWedgeStatus("Disparo SE4710 no detectado en este dispositivo.");
       return;
     }
     setUsarCamaraRespaldo(false);
@@ -1459,7 +1480,7 @@ export default function ScanScreen({ session, onNavigate }) {
     setOfflineQr(null);
     setQrToken("");
     setQrError("");
-    if (IS_HANDHELD) {
+    if (USE_HARDWARE_SCANNER) {
       setUsarCamaraRespaldo(false);
     }
     setTimeout(() => hardwareInputRef.current?.focus?.(), 180);
@@ -1758,8 +1779,8 @@ export default function ScanScreen({ session, onNavigate }) {
             <View style={styles.operatorActions}>
               <Button label="Sincronizar operacion" icon="cloud-download-outline" onPress={sincronizarDatosOperacion} />
               <Button label="Abrir SOF" icon="list-outline" tone="info" onPress={() => onNavigate?.("statement")} />
-              {IS_HANDHELD && <Button label="Activar Zebra" icon="barcode-outline" tone="info" onPress={activarPerfilZebra} />}
-              {IS_HANDHELD && <Button label="Escanear" icon="scan-outline" tone="info" onPress={dispararLecturaZebra} />}
+              {USE_HARDWARE_SCANNER && <Button label="Activar Zebra" icon="barcode-outline" tone="info" onPress={activarPerfilZebra} />}
+              {USE_HARDWARE_SCANNER && <Button label="Escanear" icon="scan-outline" tone="info" onPress={dispararLecturaZebra} />}
               <Button label="Reactivar lectura" icon="refresh-outline" tone="info" onPress={reactivarScanner} />
             </View>
             <Card style={styles.handheldStatus}>
@@ -1768,7 +1789,7 @@ export default function ScanScreen({ session, onNavigate }) {
                   ? `Memoria local lista: ${guideCacheInfo.total} guia(s).`
                   : "Sincronice la operacion antes de trabajar sin senal."}
               </Text>
-              {IS_HANDHELD ? (
+              {USE_HARDWARE_SCANNER ? (
                 <TextInput
                   ref={hardwareInputRef}
                   value={hardwareScanValue}
@@ -1789,13 +1810,13 @@ export default function ScanScreen({ session, onNavigate }) {
                 />
               ) : (
                 <Text style={styles.helper}>
-                  Esta version no inicializa el lector fisico. La camara del telefono queda activa como lector principal.
+                  Esta version no inicializa el lector fisico. Active la camara manualmente si necesita respaldo.
                 </Text>
               )}
             </Card>
             <View style={styles.operatorActions}>
               <Button
-                label={usarCamaraRespaldo ? (IS_HANDHELD ? "Ocultar camara" : "Pausar camara") : (IS_HANDHELD ? "Camara respaldo" : "Activar camara")}
+                label={usarCamaraRespaldo ? (USE_HARDWARE_SCANNER ? "Ocultar camara" : "Pausar camara") : (USE_HARDWARE_SCANNER ? "Camara respaldo" : "Activar camara")}
                 icon="camera-outline"
                 tone="info"
                 onPress={() => setUsarCamaraRespaldo((value) => !value)}
