@@ -201,6 +201,13 @@ function buscarCampoDataWedgeRecursivo(value, wantedKeys = []) {
 
 function extraerLecturaDataWedge(intent) {
   if (!intent) return null;
+  if (typeof intent === "string") {
+    return {
+      data: intent,
+      source: "SE4710",
+      labelType: ""
+    };
+  }
   const data =
     extraerCampoDataWedge(intent, "com.symbol.datawedge.data_string") ||
     extraerCampoDataWedge(intent, "data_string") ||
@@ -744,6 +751,20 @@ export default function ScanScreen({ session, onNavigate }) {
     return { guia: found, cache, error: "" };
   }
 
+  async function buscarGuiaEnCachePorIdSinToken(idOrGuia) {
+    const cache = await cargarGuiasOffline();
+    const needle = String(idOrGuia || "").trim();
+    const found = (cache.guias || []).find((item) => (
+      String(item.id || "") === needle ||
+      String(item.guia || "").trim().toUpperCase() === needle.toUpperCase()
+    ));
+    if (!found) return { guia: null, cache, error: "La guia no esta en la memoria local." };
+    if (!guiaOperableOffline(found)) {
+      return { guia: null, cache, error: "La guia esta cerrada, bloqueada o fuera de estado operativo." };
+    }
+    return { guia: found, cache, error: "" };
+  }
+
   async function actualizarGuiaEnCache(nextGuia) {
     if (!nextGuia?.id) return;
     const safeGuia = sanitizarGuiaOffline(nextGuia);
@@ -789,6 +810,38 @@ export default function ScanScreen({ session, onNavigate }) {
     if (isOperator) {
       setCaptureOpen(true);
     }
+  }
+
+  async function abrirCapturaPorIdReconocido(idOrGuia, token = "", motivo = "") {
+    if (!isOperator || !idOrGuia) return null;
+
+    const cached = await buscarGuiaEnCachePorIdSinToken(idOrGuia);
+    if (cached.guia) {
+      const auth = cached.guia.offline_signature
+        ? {
+            registro_id: Number(cached.guia.id || idOrGuia),
+            offline_signature: cached.guia.offline_signature || "",
+            offline_token_digest: cached.guia.offline_token_digest || "",
+            capturado_en: new Date().toISOString()
+          }
+        : null;
+      cargarBoletaEnCaptura(cached.guia, token, Boolean(auth), auth);
+      setQrError(motivo || "Guia abierta desde memoria local del handheld.");
+      return cached.guia;
+    }
+
+    try {
+      const data = /^\d+$/.test(String(idOrGuia)) ? await api.getBoleta(idOrGuia) : null;
+      if (data?.id) {
+        cargarBoletaEnCaptura(data, token, false, null);
+        await actualizarGuiaEnCache(data);
+        setQrError(motivo || "Guia abierta online. Si el guardado falla, regenere/sincronice QR.");
+        return data;
+      }
+    } catch (_error) {
+      // La alerta original se mantiene en el flujo llamador.
+    }
+    return null;
   }
 
   async function obtenerDeviceId() {
@@ -1277,6 +1330,16 @@ export default function ScanScreen({ session, onNavigate }) {
       }
       setBoleta(null);
       setQrError(error.message || "QR no valido");
+      if (isOperator) {
+        const opened = await abrirCapturaPorIdReconocido(
+          id,
+          token,
+          `QR leido, pero la validacion online respondio: ${error.message || "sin detalle"}. Captura abierta para no detener patio.`
+        );
+        if (opened) {
+          return opened;
+        }
+      }
       if (!options.silent) {
         Alert.alert("QR no valido", error.message || "Ese QR no es valido.");
       }
@@ -1415,15 +1478,22 @@ export default function ScanScreen({ session, onNavigate }) {
       if (parsed?.id) {
         if (parsed.isGuia) {
           const opened = await abrirGuiaPorTextoLibre(parsed.id, parsed.token);
-          if (opened) return;
+          if (opened) {
+            setDataWedgeStatus(`Guia ${opened.guia || opened.id} abierta desde ${source}.`);
+            return;
+          }
         } else {
-          await loadBoleta(parsed.id, parsed.token, parsed.raw);
+          const opened = await loadBoleta(parsed.id, parsed.token, parsed.raw);
+          if (opened?.id) {
+            setDataWedgeStatus(`Guia ${opened.guia || opened.id} abierta desde ${source}.`);
+          }
           return;
         }
       }
 
       const opened = await abrirGuiaPorTextoLibre(value, "");
       if (opened) {
+        setDataWedgeStatus(`Guia ${opened.guia || opened.id} abierta desde ${source}.`);
         return;
       }
 
@@ -1509,11 +1579,19 @@ export default function ScanScreen({ session, onNavigate }) {
     }
   }
 
-  function onBarcodeScanned({ data }) {
+  async function onBarcodeScanned({ data }) {
     if (scanned) return;
     setScanned(true);
     const parsed = extraerDatosQr(data);
     if (parsed?.id) {
+      if (parsed.isGuia) {
+        const opened = await abrirGuiaPorTextoLibre(parsed.id, parsed.token);
+        if (!opened) {
+          setQrError("Ese QR no pertenece a XTRAVON ONE / GRAIN CONTROL.");
+          Alert.alert("QR no valido", "Ese QR no pertenece a XTRAVON ONE / GRAIN CONTROL.");
+        }
+        return;
+      }
       loadBoleta(parsed.id, parsed.token, parsed.raw);
     } else {
       setQrError("Ese QR no pertenece a XTRAVON ONE / GRAIN CONTROL.");
